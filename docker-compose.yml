@@ -1,0 +1,30 @@
+services:
+  mqtt5:
+    image: eclipse-mosquitto
+    container_name: mqtt5
+    ports:
+      - 1883:1883 #default mqtt port
+      - 9001:9001 #default mqtt port for websockets
+    volumes:
+      - ./mqtt/config:/mosquitto/config:rw
+      - ./mqtt/data:/mosquitto/data:rw
+      - ./mqtt/log:/mosquitto/log:rw
+    restart: unless-stopped
+
+db:
+  image: postgres:16
+  restart: always
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready", "-U", "enpitsu", "-d", "enpitsu"]
+    interval: 3s
+    retries: 10
+    start_period: 30s
+  environment:
+    POSTGRES_DB: loremipsum
+    POSTGRES_USER: loremipsum
+    POSTGRES_PASSWORD: loremipsum
+    PGDATA: /var/lib/postgresql/data/pgdata
+  volumes:
+    - ./db:/var/lib/postgresql/data
+  ports:
+    - 127.0.0.1:5455:5432
