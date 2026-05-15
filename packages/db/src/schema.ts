@@ -5,7 +5,6 @@ import {
   varchar,
   timestamp,
   boolean,
-  unique,
 } from "drizzle-orm/pg-core";
 
 export const nodeAssignments = pgTable("node_assignments", {
