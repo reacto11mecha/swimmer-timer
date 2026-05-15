@@ -2,3 +2,4 @@ mqtt/log/*
 !mqtt/log/.gitkeep
 mqtt/data/*
 !mqtt/data/.gitkeep
+node_modules/
