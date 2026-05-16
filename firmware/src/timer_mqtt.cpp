@@ -48,6 +48,8 @@ unsigned long lastMsgTime       = 0;
 int lapNum = 1;
 const long interval = 5000;
 
+
+
 // ================== MQTT ==================
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -56,7 +58,7 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 
 
-// ================== RECONNECT (NON BLOCKING) ==================
+// ================== RECONNECT ==================
 void reconnect() {
   static unsigned long lastAttempt = 0;
 
@@ -75,6 +77,8 @@ void reconnect() {
   }
 }
 
+
+
 // ================== PRINT TIME ==================
 void printElapsed(unsigned long elapsed) {
   unsigned long ms = elapsed % 1000;
@@ -88,6 +92,9 @@ void printElapsed(unsigned long elapsed) {
   display.setCursor(0, 0);
   display.println(buf);
 }
+
+
+
 
 // ================== SETUP ==================
 void setup() {
@@ -136,6 +143,10 @@ void setup() {
     display.display(); // Actually display the text
 }
 
+
+
+
+
 // ================== LOOP ==================
 void loop() {
   display.clearDisplay(); // Clear buffer
@@ -149,12 +160,12 @@ void loop() {
 if (currentState == RUNNING) {
   // Timer jalan
   display.setTextSize(2);
-  display.setCursor(20,15);
+  display.setCursor(40,20);
   display.println("RUN");
 } 
 else {
   display.setTextSize(2);
-  display.setCursor(20,15);
+  display.setCursor(40,20);
   display.println("READY");
 }
 display.display(); // Actually display the text
@@ -182,6 +193,10 @@ display.display(); // Actually display the text
 
   client.loop();
 
+
+
+
+
   // ================== START/STOP ==================
   if (digitalRead(BTN_START) == LOW && millis() - btn1Last > 200) {
     btn1Last = millis();
@@ -198,6 +213,11 @@ display.display(); // Actually display the text
     }
   }
 
+
+
+
+
+
   // ================== RESET ==================
   if (digitalRead(BTN_RESET) == LOW && millis() - btnResetLast > 200) {
     btnResetLast = millis();
@@ -208,6 +228,10 @@ display.display(); // Actually display the text
 
     Serial.println("RESET");
   }
+
+
+
+
 
   // ================== RUNNING ==================
   if (currentState == RUNNING) {
@@ -220,11 +244,11 @@ display.display(); // Actually display the text
 
     // ================== LAP ==================
     if (digitalRead(BTN_LAP) == LOW && millis() - btn2Last > 200) {
-      btn2Last = millis();
       Serial.println("LAP");
+
       unsigned long elapsed = millis() - startMillis;
 
-      StaticJsonDocument<256> doc;
+      JsonDocument doc;
       doc["node"] = device_id;
       doc["time_ms"] = elapsed;
       doc["lap"] = lapNum;
@@ -237,12 +261,16 @@ display.display(); // Actually display the text
     }
   }
 
+
+
+  
+
   // ================== TELEMETRY ==================
   unsigned long now = millis();
   if (now - lastMsgTime > interval) {
     lastMsgTime = now;
 
-    StaticJsonDocument<256> doc;
+    JsonDocument doc;
     doc["node"] = device_id;
     doc["wifi_rssi"] = WiFi.RSSI();
     doc["battery"] = random(70, 90);
