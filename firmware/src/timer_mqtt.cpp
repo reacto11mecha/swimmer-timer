@@ -29,9 +29,9 @@ const char* mqtt_pass   = "";
 const char* device_id   = "timer-1";
 
 // ================== TOPIC ==================
-const char* topic_telemetry       = "/timer/telemetry";
-const char* topic_lap             = "/timer/lap";
-const char* topic_status          = "/timer/status";
+const char* topic_telemetry       = "timer/telemetry";
+const char* topic_lap             = "timer/lap";
+const char* topic_status          = "timer/status";
 
 // ================== STATE ==================
 enum State { IDLE, RUNNING };
