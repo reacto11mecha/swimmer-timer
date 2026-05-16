@@ -7,17 +7,17 @@
 #include <Adafruit_SSD1306.h>
 
 // ================== BUTTON ==================
-#define BTN_START 34
-#define BTN_LAP   23
+#define BTN_START 25
+#define BTN_LAP   26
 #define BTN_RESET 13
 
 // ================== WIFI ==================
-#define WIFI_SSID     ""
+#define WIFI_SSID     "Wokwi-GUEST"
 #define WIFI_PASSWORD ""
 
 // ================== SCREEN ==================
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
-#define SCREEN_HEIGHT 32 // OLED display height, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
 #define OLED_ADDRES 0x3C // Alat i2c
 #define OLED_RESET    -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 
@@ -29,11 +29,9 @@ const char* mqtt_pass   = "";
 const char* device_id   = "timer-1";
 
 // ================== TOPIC ==================
-const char* topic_telemetry       = "esp32/timer-1/data";
-const char* topic_status_baterai  = "esp32/timer-1/status_baterai";
-const char* topic_status_perenang = "esp32/timer-1/status_perenang";
-const char* topic_lap             = "esp32/timer-1/lap";
-const char* topic_status          = "esp32/timer-1/status";
+const char* topic_telemetry       = "/timer/telemetry";
+const char* topic_lap             = "/timer/lap";
+const char* topic_status          = "/timer/status";
 
 // ================== STATE ==================
 enum State { IDLE, RUNNING };
@@ -56,30 +54,7 @@ PubSubClient client(espClient);
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-// ================== CALLBACK ==================
-void callback(char* topic, byte* payload, unsigned int length) {
-  Serial.print("Message [");
-  Serial.print(topic);
-  Serial.print("]: ");
 
-  String message;
-  for (int i = 0; i < length; i++) {
-    message += (char)payload[i];
-  }
-  Serial.println(message);
-
-  if (String(topic) == topic_status_perenang) {
-    if (message == "dis") {
-      client.publish(topic_status_perenang, "diskualifikasi");
-        display.clearDisplay(); // Clear buffer
-        display.setTextSize(2); // Set text size
-        display.setTextColor(SSD1306_WHITE); // Set color (white/black)
-        display.setCursor(0,0); // Set cursor position (x, y)
-        display.println("diskualifikasi"); // Add text to buffer
-        display.display(); // Actually display the text
-    }
-  }
-}
 
 // ================== RECONNECT (NON BLOCKING) ==================
 void reconnect() {
@@ -145,7 +120,6 @@ void setup() {
     display.display(); // Actually display the text
 
   client.setServer(mqtt_server, mqtt_port);
-  client.setCallback(callback);
   client.setKeepAlive(5);
   client.setSocketTimeout(2);
 
@@ -168,24 +142,17 @@ void loop() {
   display.setTextSize(1); // Set text size
   display.setTextColor(SSD1306_WHITE); // Set color (white/black)
   display.setCursor(0,0); // Set cursor position (x, y)
-  display.setCursor(70,0); // Set cursor position (x, y)
   display.println(WiFi.RSSI()); // Add text to buffer
   display.setCursor(109,0); // Set cursor position (x, y)
   display.print(random(70, 90)); // Add text to buffer
   display.print("%"); // Add text to buffer
 if (currentState == RUNNING) {
   // Timer jalan
-  printElapsed(millis() - startMillis);
-
   display.setTextSize(2);
   display.setCursor(20,15);
   display.println("RUN");
 } 
 else {
-  // Belum start / stop
-  display.setCursor(0,0);
-  display.println("00:00.000");
-
   display.setTextSize(2);
   display.setCursor(20,15);
   display.println("READY");
@@ -254,26 +221,16 @@ display.display(); // Actually display the text
     // ================== LAP ==================
     if (digitalRead(BTN_LAP) == LOW && millis() - btn2Last > 200) {
       btn2Last = millis();
-
+      Serial.println("LAP");
       unsigned long elapsed = millis() - startMillis;
-
-      unsigned long ms = elapsed % 1000;
-      unsigned long s = (elapsed / 1000) % 60;
-      unsigned long m = (elapsed / 60000) % 60;
-
-      Serial.printf("LAP %d: %02lu:%02lu.%03lu\n", lapNum, m, s, ms);
 
       StaticJsonDocument<256> doc;
       doc["node"] = device_id;
-      doc["lap"] = lapNum;
-      doc["m"] = m;
-      doc["s"] = s;
-      doc["ms"] = ms;
       doc["time_ms"] = elapsed;
+      doc["lap"] = lapNum;
 
       char buffer[256];
       serializeJson(doc, buffer);
-
       client.publish(topic_lap, buffer);
 
       lapNum++;
@@ -288,13 +245,10 @@ display.display(); // Actually display the text
     StaticJsonDocument<256> doc;
     doc["node"] = device_id;
     doc["wifi_rssi"] = WiFi.RSSI();
-    doc["baterai"] = random(70, 90);
+    doc["battery"] = random(70, 90);
 
     char buffer[256];
     serializeJson(doc, buffer);
-
-    // Serial.print("Publish: ");
-    // Serial.println(buffer);
 
     client.publish(topic_telemetry, buffer);
   }
