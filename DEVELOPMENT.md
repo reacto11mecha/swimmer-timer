@@ -2,7 +2,7 @@
 
 ## Dokumen Teknis Komunikasi ESP32
 
-ESP32 -> Web
+### ESP32 -> Web
 
 1. Data waktu start ke mqtt. Dikirim oleh starter gun.
 
@@ -38,6 +38,14 @@ Nama Topik: `device/telemetry`
   battery: number
 }
 ```
+
+### Web -> ESP32
+
+1. Untuk mereset hitungan lap dan state di semua alat.
+
+Nama Topik: `server/reset`
+
+Data bisa berupa string kosong, bisa di abaikan.
 
 ## Dokumen Teknis Pewaktu <=> Registrasi
 

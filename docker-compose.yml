@@ -28,3 +28,15 @@ services:
       - ./db:/var/lib/postgresql/data
     ports:
       - 127.0.0.1:5455:5432
+
+  ntp:
+    image: cturra/ntp:latest
+    container_name: ntp-server
+    restart: unless-stopped
+    ports:
+      - "123:123/udp"
+    cap_add:
+      - SYS_TIME
+    environment:
+      # Upstream servers your Docker host will sync with
+      - NTP_SERVERS=time.google.com,pool.ntp.org
