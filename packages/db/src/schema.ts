@@ -15,30 +15,47 @@ export const nodeAssignments = pgTable("node_assignments", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const activeHeats = pgTable("active_heats", {
+export const events = pgTable("events", {
   id: serial("id").primaryKey(),
-  serverHeatId: varchar("server_heat_id").notNull(),
-  eventTitle: varchar("event_title"),
+  serverEventId: integer("server_event_id").notNull().unique(),
+  kodeAcara: integer("kode_acara").notNull(),
+  nomorLomba: integer("nomor_lomba").notNull(),
+});
+
+export const heats = pgTable("heats", {
+  id: serial("id").primaryKey(),
+  eventId: integer("event_id").references(() => events.id, {
+    onDelete: "cascade",
+  }),
+  serverHeatId: integer("server_heat_id").notNull().unique(),
+  label: integer("label").notNull(),
+
   status: varchar("status", {
-    enum: ["PENDING", "RUNNING", "FINISHED", "SYNCED"],
+    enum: ["PENDING", "RUNNING", "FINISHED"],
   }).default("PENDING"),
+
+  isSynced: boolean("is_synced").default(false),
+
+  maxLaps: integer("max_laps").default(1).notNull(),
   startedAt: timestamp("started_at"),
   hardwareStartMillis: integer("hardware_start_millis"),
 });
 
 export const laneAssignments = pgTable("lane_assignments", {
   id: serial("id").primaryKey(),
-  activeHeatId: integer("active_heat_id").references(() => activeHeats.id, {
+  heatId: integer("heat_id").references(() => heats.id, {
     onDelete: "cascade",
   }),
-  serverParticipantId: varchar("server_participant_id").notNull(),
+  serverParticipantId: integer("server_participant_id").notNull(),
   laneNumber: integer("lane_number").notNull(),
   athleteName: varchar("athlete_name"),
   clubName: varchar("club_name"),
+
+  // (angka kalkulasi finish - starter)
+  finalTimeMillis: integer("final_time_millis"),
+
+  // untuk keperluan interface (cnt: "01:23.45")
   finalTime: varchar("final_time"),
-  status: varchar("status", { enum: ["OK", "DNS", "DNF", "DSQ"] }).default(
-    "OK",
-  ),
 });
 
 export const lapTimes = pgTable("lap_times", {
