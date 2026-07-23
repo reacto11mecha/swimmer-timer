@@ -1,24 +1,31 @@
 import { createServerFn } from "@tanstack/react-start";
-import { eq, inArray, desc } from "drizzle-orm";
+import { eq, desc, inArray } from "drizzle-orm";
 import { db } from "../db";
 import {
-  activeHeats,
+  events,
+  heats,
   laneAssignments,
   lapTimes,
 } from "@swimmer-timer/db/schema"; //
 
 export const getLiveDashboard = createServerFn({ method: "GET" }).handler(
   async () => {
-    // 1. Cari pertandingan yang statusnya PENDING atau RUNNING
-    const heat = await db.query.activeHeats.findFirst({
-      where: inArray(activeHeats.status, ["PENDING", "RUNNING"]),
+    // 1. Cari pertandingan yang statusnya CURRENT atau RUNNING
+    const heat = await db.query.heats.findFirst({
+      where: inArray(heats.status, ["CURRENT", "RUNNING"]),
     });
 
     if (!heat) return null;
 
+    const event = await db.query.events.findFirst({
+      where: eq(events.id, heat.eventId),
+    });
+
+    if (!event) return null;
+
     // 2. Ambil semua lintasan untuk sesi ini
     const lanes = await db.query.laneAssignments.findMany({
-      where: eq(laneAssignments.activeHeatId, heat.id),
+      where: eq(laneAssignments.heatId, heat.id),
       orderBy: (lanes, { asc }) => [asc(lanes.laneNumber)],
     });
 
@@ -33,6 +40,6 @@ export const getLiveDashboard = createServerFn({ method: "GET" }).handler(
       }),
     );
 
-    return { heat, lanes: lanesWithData };
+    return { event, heat, lanes: lanesWithData };
   },
 );

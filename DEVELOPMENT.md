@@ -10,7 +10,7 @@ Nama Topik: `starter/start`
 
 ```ts
 {
-  elapsed: number,
+  currentTime: number,
 }
 ```
 
@@ -21,7 +21,7 @@ Nama Topik: `timer/lap`
 ```ts
 {
   node: string,
-  elapsed: number,
+  currentTime: number,
   lap_order: number
 }
 ```

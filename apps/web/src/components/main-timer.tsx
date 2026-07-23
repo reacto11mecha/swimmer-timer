@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { getLiveDashboard } from "@/server/timer.functions"; // Pastikan path ini benar
+import { getLiveDashboard } from "@/server/timer.functions";
 import { publishResetToHardware as resetHardware } from "@/server/mqtt.functions";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +25,7 @@ export default function TimerDashboard() {
   });
 
   const heat = dashboard?.heat;
+  const event = dashboard?.event;
   const isRunning = heat?.status === "RUNNING";
 
   // 2. Logika Animasi Stopwatch (Berjalan Mulus di UI)
@@ -99,14 +100,15 @@ export default function TimerDashboard() {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <Badge variant={isRunning ? "default" : "secondary"}>
-                {heat.status}
+                {isRunning ? "RUNNING" : "WAITING GUN START"}
               </Badge>
               {isRunning && (
                 <Activity className="h-4 w-4 text-green-500 animate-pulse" />
               )}
             </div>
             <CardTitle className="text-3xl font-bold">
-              {heat.eventTitle}
+              Acara {event?.kodeAcara} - Nomor {event?.nomorLomba} - Heat{" "}
+              {heat.label}
             </CardTitle>
           </div>
 

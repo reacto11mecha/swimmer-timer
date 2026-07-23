@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as PreparationRouteImport } from './routes/preparation'
 import { Route as HardwareRouteImport } from './routes/hardware'
+import { Route as CompetitionRouteImport } from './routes/competition'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiTrpcSplatRouteImport } from './routes/api.trpc.$'
 
@@ -22,6 +23,11 @@ const PreparationRoute = PreparationRouteImport.update({
 const HardwareRoute = HardwareRouteImport.update({
   id: '/hardware',
   path: '/hardware',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CompetitionRoute = CompetitionRouteImport.update({
+  id: '/competition',
+  path: '/competition',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -37,12 +43,14 @@ const ApiTrpcSplatRoute = ApiTrpcSplatRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/competition': typeof CompetitionRoute
   '/hardware': typeof HardwareRoute
   '/preparation': typeof PreparationRoute
   '/api/trpc/$': typeof ApiTrpcSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/competition': typeof CompetitionRoute
   '/hardware': typeof HardwareRoute
   '/preparation': typeof PreparationRoute
   '/api/trpc/$': typeof ApiTrpcSplatRoute
@@ -50,20 +58,28 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/competition': typeof CompetitionRoute
   '/hardware': typeof HardwareRoute
   '/preparation': typeof PreparationRoute
   '/api/trpc/$': typeof ApiTrpcSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/hardware' | '/preparation' | '/api/trpc/$'
+  fullPaths: '/' | '/competition' | '/hardware' | '/preparation' | '/api/trpc/$'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/hardware' | '/preparation' | '/api/trpc/$'
-  id: '__root__' | '/' | '/hardware' | '/preparation' | '/api/trpc/$'
+  to: '/' | '/competition' | '/hardware' | '/preparation' | '/api/trpc/$'
+  id:
+    | '__root__'
+    | '/'
+    | '/competition'
+    | '/hardware'
+    | '/preparation'
+    | '/api/trpc/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CompetitionRoute: typeof CompetitionRoute
   HardwareRoute: typeof HardwareRoute
   PreparationRoute: typeof PreparationRoute
   ApiTrpcSplatRoute: typeof ApiTrpcSplatRoute
@@ -85,6 +101,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HardwareRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/competition': {
+      id: '/competition'
+      path: '/competition'
+      fullPath: '/competition'
+      preLoaderRoute: typeof CompetitionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -104,6 +127,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CompetitionRoute: CompetitionRoute,
   HardwareRoute: HardwareRoute,
   PreparationRoute: PreparationRoute,
   ApiTrpcSplatRoute: ApiTrpcSplatRoute,

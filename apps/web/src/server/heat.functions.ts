@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { events, heats, laneAssignments } from "@swimmer-timer/db/schema";
@@ -630,16 +630,15 @@ export const activateHeat = createServerFn({ method: "POST" })
     }),
   )
   .handler(async ({ data }) => {
-    // Set heat yang dipilih menjadi RUNNING
     await db.transaction(async (tx) => {
       await tx
         .update(heats)
         .set({ status: "PENDING" })
-        .where(eq(heats.status, "RUNNING"));
+        .where(inArray(heats.status, ["CURRENT", "RUNNING"]));
 
       await tx
         .update(heats)
-        .set({ status: "RUNNING" })
+        .set({ status: "CURRENT" })
         .where(eq(heats.id, data.heatDbId));
     });
 
@@ -665,7 +664,7 @@ export const getRunningHeat = createServerFn({ method: "GET" }).handler(
       })
       .from(heats)
       .innerJoin(events, eq(heats.eventId, events.id))
-      .where(eq(heats.status, "RUNNING"))
+      .where(inArray(heats.status, ["CURRENT", "RUNNING"]))
       .limit(1);
 
     return result[0] || null;

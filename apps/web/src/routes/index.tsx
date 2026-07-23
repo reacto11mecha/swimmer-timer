@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import TimerDashboard from "#/components/main-timer";
+export const Route = createFileRoute("/")({
+  component: RouteComponent,
+});
 
-export const Route = createFileRoute("/")({ component: App });
-
-function App() {
-  return <TimerDashboard />;
+function RouteComponent() {
+  return <div>Soon to be a full list of data</div>;
 }

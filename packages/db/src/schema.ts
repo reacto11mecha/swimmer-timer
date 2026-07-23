@@ -5,6 +5,7 @@ import {
   varchar,
   timestamp,
   boolean,
+  bigint,
 } from "drizzle-orm/pg-core";
 
 export const nodeAssignments = pgTable("node_assignments", {
@@ -24,21 +25,23 @@ export const events = pgTable("events", {
 
 export const heats = pgTable("heats", {
   id: serial("id").primaryKey(),
-  eventId: integer("event_id").references(() => events.id, {
-    onDelete: "cascade",
-  }),
+  eventId: integer("event_id")
+    .notNull()
+    .references(() => events.id, {
+      onDelete: "cascade",
+    }),
   serverHeatId: integer("server_heat_id").notNull().unique(),
   label: integer("label").notNull(),
 
   status: varchar("status", {
-    enum: ["PENDING", "RUNNING", "FINISHED"],
+    enum: ["PENDING", "CURRENT", "RUNNING", "FINISHED"],
   }).default("PENDING"),
 
   isSynced: boolean("is_synced").default(false),
 
   maxLaps: integer("max_laps").default(1).notNull(),
   startedAt: timestamp("started_at"),
-  hardwareStartMillis: integer("hardware_start_millis"),
+  hardwareStartMillis: bigint("hardware_start_millis", { mode: "number" }),
 });
 
 export const laneAssignments = pgTable("lane_assignments", {
@@ -52,7 +55,7 @@ export const laneAssignments = pgTable("lane_assignments", {
   clubName: varchar("club_name"),
 
   // (angka kalkulasi finish - starter)
-  finalTimeMillis: integer("final_time_millis"),
+  finalTimeMillis: bigint("final_time_millis", { mode: "number" }),
 
   // untuk keperluan interface (cnt: "01:23.45")
   finalTime: varchar("final_time"),
@@ -67,6 +70,6 @@ export const lapTimes = pgTable("lap_times", {
   lapNumber: integer("lap_number").notNull(),
   splitTime: varchar("split_time").notNull(),
   cumulativeTime: varchar("cumulative_time").notNull(),
-  rawMillis: integer("raw_millis").notNull(),
+  rawMillis: bigint("raw_millis", { mode: "number" }).notNull(),
   recordedAt: timestamp("recorded_at").defaultNow(),
 });

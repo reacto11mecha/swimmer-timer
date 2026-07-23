@@ -26,7 +26,7 @@ export default function Header() {
             Persiapan
           </Link>
           <Link
-            to="/"
+            to="/competition"
             className="nav-link"
             activeProps={{ className: "nav-link is-active" }}
           >
