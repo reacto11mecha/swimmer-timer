@@ -1,11 +1,23 @@
 import mqtt from "mqtt";
 import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import "dotenv/config";
 
 import * as schema from "@swimmer-timer/db/schema";
-const { activeHeats, laneAssignments, lapTimes, nodeAssignments } = schema;
+const { heats, laneAssignments, lapTimes, nodeAssignments } = schema;
+
+const formatTime = (ms: number) => {
+  const totalSeconds = Math.floor(ms / 1000);
+  const mins = Math.floor(totalSeconds / 60)
+    .toString()
+    .padStart(2, "0");
+  const secs = (totalSeconds % 60).toString().padStart(2, "0");
+  const fract = Math.floor((ms % 1000) / 10)
+    .toString()
+    .padStart(2, "0");
+  return `${mins}:${secs}.${fract}`;
+};
 
 // 1. Setup Koneksi Database
 const pool = new pg.Pool({
@@ -18,11 +30,10 @@ const db = drizzle(pool, { schema });
 // 2. Setup Koneksi MQTT
 const MQTT_BROKER = process.env.MQTT_URL || "mqtt://127.0.0.1:1883";
 const client = mqtt.connect(MQTT_BROKER);
-
 client.on("connect", () => {
-  console.log("✅ MQTT Worker terhubung ke broker:", MQTT_BROKER);
+  console.log("[MQTT] Terhubung ke broker");
 
-  client.subscribe("timer/start");
+  client.subscribe("starter/start");
   client.subscribe("timer/lap");
 });
 
@@ -30,141 +41,124 @@ client.on("message", async (topic, message) => {
   try {
     const payload = JSON.parse(message.toString());
 
-    if (topic === "timer/start") {
-      await handleTimerStart(payload.elapsed);
-    } else if (topic === "timer/lap") {
-      await processLapTime(payload);
+    switch (topic) {
+      case "starter/start":
+        await handleStarterStart(payload);
+        break;
+      case "timer/lap":
+        await handleTimerLap(payload);
+        break;
+      default:
+        // Mengabaikan topik lain (termasuk telemetry jika ter-publish)
+        break;
     }
-  } catch (error) {
-    console.error(`❌ Gagal memproses pesan di topik ${topic}:`, error);
+  } catch (err) {
+    console.error("[MQTT] Gagal memproses pesan:", err);
   }
 });
 
 // ==========================================
-// LOGIKA PEMROSESAN
+// HANDLER: PISTOL START (GUN)
 // ==========================================
-
-async function handleTimerStart(startMillis: number) {
-  // Cari pertandingan yang sudah di-set "READY" oleh operator (status PENDING)
-  const pendingHeat = await db.query.activeHeats.findFirst({
-    where: eq(activeHeats.status, "PENDING"),
+async function handleStarterStart(payload: { currentTime: number }) {
+  // Cari heat yang sedang berstatus CURRENT (siap ditembak)
+  const readyHeat = await db.query.heats.findFirst({
+    where: eq(heats.status, "CURRENT"),
   });
 
-  if (!pendingHeat) {
-    console.warn("⚠️ Sinyal START diterima, tapi tidak ada sesi PENDING.");
-    return;
+  if (readyHeat) {
+    // Pistol ditembakkan: Ubah ke RUNNING dan simpan waktu mulai hardware
+    await db
+      .update(heats)
+      .set({
+        status: "RUNNING",
+        startedAt: new Date(),
+        hardwareStartMillis: payload.currentTime,
+      })
+      .where(eq(heats.id, readyHeat.id));
+
+    console.log(
+      `[MQTT] Gun Fired! Heat ${readyHeat.id} status berubah dari CURRENT menjadi RUNNING.`,
+    );
+  } else {
+    console.warn(
+      "[MQTT] Sinyal pistol diterima, tetapi tidak ada Heat yang berstatus CURRENT.",
+    );
   }
-
-  // Ubah status jadi RUNNING dan simpan millis awal
-  await db
-    .update(activeHeats)
-    .set({
-      status: "RUNNING",
-      startedAt: new Date(),
-      hardwareStartMillis: startMillis,
-    })
-    .where(eq(activeHeats.id, pendingHeat.id));
-
-  console.log(
-    `⏱️ Pertandingan [${pendingHeat.eventTitle}] DIMULAI pada millis: ${startMillis}`,
-  );
 }
 
-async function processLapTime(payload: {
-  node: string; // Ini adalah 'nodeId' yang dikirim ESP32
-  elapsed: number;
+// ==========================================
+// HANDLER: TOUCHPAD / LAPPING LINTASAN
+// ==========================================
+async function handleTimerLap(payload: {
+  node: string;
+  currentTime: number;
   lap_order: number;
 }) {
-  const { node, elapsed, lap_order } = payload;
+  const { node, currentTime, lap_order } = payload;
 
-  // 1. CARI MAPPING LINTASAN BERDASARKAN NODE ID
-  // Kita cari lintasan berapa yang ditugaskan untuk node ini
-  const nodeConfig = await db.query.nodeAssignments.findFirst({
-    where: and(
-      eq(nodeAssignments.nodeId, node),
-      eq(nodeAssignments.isActive, true),
-    ),
+  // 1. Cari tahu node ini dialokasikan untuk lintasan (lane) ke berapa
+  const assignmentNode = await db.query.nodeAssignments.findFirst({
+    where: eq(nodeAssignments.nodeId, node),
   });
 
-  if (!nodeConfig) {
+  if (!assignmentNode || !assignmentNode.isActive) {
     console.warn(
-      `⚠️ Menerima data dari node [${node}], tapi node tidak terdaftar/aktif di DB.`,
+      `[MQTT] Node ${node} tidak terdaftar atau tidak aktif di lintasan mana pun.`,
     );
     return;
   }
 
-  const laneNumber = nodeConfig.laneNumber;
+  const lane = assignmentNode.laneNumber;
 
-  // 2. Dapatkan pertandingan yang sedang berjalan
-  const activeHeat = await db.query.activeHeats.findFirst({
-    where: eq(activeHeats.status, "RUNNING"),
+  // 2. Pastikan ada heat yang sedang berjalan
+  const runningHeat = await db.query.heats.findFirst({
+    where: eq(heats.status, "RUNNING"),
   });
 
-  if (!activeHeat) return;
+  if (!runningHeat || !runningHeat.hardwareStartMillis) return;
 
-  // 3. Cari data peserta di lintasan tersebut pada heat aktif
-  const lane = await db.query.laneAssignments.findFirst({
+  // 3. Cari data peserta di lintasan tersebut pada heat ini
+  const assignment = await db.query.laneAssignments.findFirst({
     where: and(
-      eq(laneAssignments.activeHeatId, activeHeat.id),
-      eq(laneAssignments.laneNumber, laneNumber),
+      eq(laneAssignments.heatId, runningHeat.id),
+      eq(laneAssignments.laneNumber, lane),
     ),
   });
 
-  if (!lane) {
-    console.warn(
-      `⚠️ Node [${node}] (Lintasan ${laneNumber}) terdeteksi, tapi tidak ada atlet di lintasan ini.`,
-    );
-    return;
-  }
+  if (!assignment) return;
+  if (assignment.finalTimeMillis) return; // Jika sudah finish, abaikan sentuhan ekstra
 
-  // 4. Kalkulasi Waktu (Logika startOffset tetap dipertahankan)
-  const startOffset = activeHeat.hardwareStartMillis ?? 0;
-  const cumulativeMillis = elapsed - startOffset;
-  let splitTimeMillis = cumulativeMillis;
+  // 4. Kalkulasi waktu dan format
+  const calcMillis = currentTime - runningHeat.hardwareStartMillis;
 
-  if (lap_order > 1) {
-    const prevLap = await db.query.lapTimes.findFirst({
-      where: and(
-        eq(lapTimes.laneAssignmentId, lane.id),
-        eq(lapTimes.lapNumber, lap_order - 1),
-      ),
-      orderBy: [desc(lapTimes.lapNumber)],
-    });
+  const splitTimeDisplay = formatTime(calcMillis);
 
-    if (prevLap) {
-      splitTimeMillis = elapsed - prevLap.rawMillis;
-    }
-  }
-
-  // 5. Simpan ke Database
+  // 5. Simpan catatan lap menggunakan lap_order dari payload perangkat
   await db.insert(lapTimes).values({
-    laneAssignmentId: lane.id,
+    laneAssignmentId: assignment.id,
     lapNumber: lap_order,
-    splitTime: formatTime(splitTimeMillis),
-    cumulativeTime: formatTime(cumulativeMillis),
-    rawMillis: elapsed,
+    splitTime: splitTimeDisplay,
+    cumulativeTime: splitTimeDisplay,
+    rawMillis: calcMillis,
   });
 
-  console.log(
-    `🏊 Node: ${node} -> Lintasan ${laneNumber} | Lap ${lap_order} | Total: ${formatTime(cumulativeMillis)}`,
-  );
-}
+  // 6. Cek apakah batas lap sudah tercapai (Finish)
+  if (lap_order >= runningHeat.maxLaps) {
+    await db
+      .update(laneAssignments)
+      .set({
+        finalTimeMillis: calcMillis,
+        finalTime: splitTimeDisplay,
+      })
+      .where(eq(laneAssignments.id, assignment.id));
 
-// ==========================================
-// UTILITY
-// ==========================================
-
-function formatTime(ms: number): string {
-  // Jika karena alasan tertentu angkanya negatif (misal startOffset lebih besar dari elapsed akibat error hardware)
-  if (ms < 0) ms = 0;
-
-  const minutes = Math.floor(ms / 60000);
-  const seconds = Math.floor((ms % 60000) / 1000);
-  const milliseconds = ms % 1000;
-
-  const m = minutes.toString().padStart(2, "0");
-  const s = seconds.toString().padStart(2, "0");
-  const msStr = (milliseconds / 10).toFixed(0).padStart(2, "0"); // Ambil 2 digit ms
-
-  return `${m}:${s}.${msStr}`;
+    console.log(
+      `[MQTT] Lane ${lane} (Node: ${node}) FINISH di ${splitTimeDisplay}`,
+    );
+  } else {
+    console.log(
+      `[MQTT] Lane ${lane} (Node: ${node}) Lap ${lap_order} di ${splitTimeDisplay}`,
+    );
+  }
 }

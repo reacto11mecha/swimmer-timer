@@ -145,12 +145,18 @@ function PreparationPage() {
           <div className="space-y-1">
             <CardTitle className="text-2xl flex items-center gap-3">
               Heat Berjalan
-              <Badge className="bg-green-500 hover:bg-green-600 dark:bg-green-600 text-white shadow-sm border-0">
-                <span className="relative flex h-2 w-2 mr-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
-                </span>
-                RUNNING
+              <Badge
+                className={`${runningHeat?.status === "CURRENT" ? "bg-yellow-500 hover:bg-yellow-600 dark:bg-yellow-600 text-white/75" : "bg-green-500 hover:bg-green-600 dark:bg-green-600 text-white"} shadow-sm border-0`}
+              >
+                {runningHeat?.status === "RUNNING" ? (
+                  <span className="relative flex h-2 w-2 mr-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                  </span>
+                ) : null}
+                {runningHeat?.status === "CURRENT"
+                  ? "WAITING GUN START"
+                  : "RUNNING"}
               </Badge>
             </CardTitle>
             <CardDescription>
