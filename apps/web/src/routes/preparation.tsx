@@ -126,10 +126,13 @@ function PreparationPage() {
 					const laneNum = parseInt(col1, 10);
 					if (!isNaN(laneNum) && currentHeat) {
 						const athleteName = row.getCell(2).text?.trim();
-						if (athleteName) {
+						if (athleteName && athleteName !== "Nama") {
+							// Abaikan jika ini baris header tabel
 							currentHeat.lanes.push({
 								laneNumber: laneNum,
 								athleteName: athleteName,
+								birthYear: row.getCell(3).text?.trim() || "-",
+								ageGroup: row.getCell(4).text?.trim() || "-",
 								clubName: row.getCell(5).text?.trim() || "-",
 								seedTime: row.getCell(6).text?.trim() || "-",
 							});
@@ -249,9 +252,13 @@ function PreparationPage() {
 				<CardHeader className="border-b border-green-100 dark:border-green-900/30">
 					<div className="space-y-1">
 						<CardTitle className="text-2xl flex items-center gap-3">
-							Heat Berjalan
+							Heat Aktif di Kolam
 							<Badge
-								className={`${runningHeat?.status === "CURRENT" ? "bg-yellow-500 hover:bg-yellow-600 dark:bg-yellow-600 text-white/75" : "bg-green-500 hover:bg-green-600 dark:bg-green-600 text-white"} shadow-sm border-0`}
+								className={`${
+									runningHeat?.status === "PENDING"
+										? "bg-yellow-500 hover:bg-yellow-600 dark:bg-yellow-600 text-white/75"
+										: "bg-green-500 hover:bg-green-600 dark:bg-green-600 text-white"
+								} shadow-sm border-0`}
 							>
 								{runningHeat?.status === "RUNNING" && (
 									<span className="relative flex h-2 w-2 mr-2">
@@ -259,14 +266,15 @@ function PreparationPage() {
 										<span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
 									</span>
 								)}
-								{runningHeat?.status === "CURRENT"
+								{/* Jika belum lari, tulis WAITING, jika tidak tampilkan status aslinya */}
+								{runningHeat?.status === "PENDING"
 									? "WAITING GUN START"
-									: "RUNNING"}
+									: runningHeat?.status}
 							</Badge>
 						</CardTitle>
 						<CardDescription>
-							Informasi detail terkait heat yang saat ini sedang dipersiapkan di
-							kolam.
+							Informasi detail terkait heat yang saat ini aktif tertaut ke
+							perangkat keras.
 						</CardDescription>
 					</div>
 				</CardHeader>
@@ -340,7 +348,7 @@ function PreparationPage() {
 					) : (
 						<div className="text-center py-10 text-muted-foreground">
 							<p>
-								Tidak ada heat yang berstatus RUNNING atau CURRENT saat ini.
+								Tidak ada heat yang di-set aktif ke perangkat keras saat ini.
 							</p>
 							<p className="text-sm mt-1">
 								Silakan aktifkan heat dari daftar antrean di bawah.

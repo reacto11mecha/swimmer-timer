@@ -8,6 +8,8 @@ import { events, heats, laneAssignments } from "@swimmer-timer/db/schema";
 const LaneSchema = z.object({
 	laneNumber: z.number(),
 	athleteName: z.string(),
+	birthYear: z.string().nullable(),
+	ageGroup: z.string().nullable(),
 	clubName: z.string().nullable(),
 	seedTime: z.string().nullable(),
 });
@@ -32,10 +34,8 @@ const ImportPayloadSchema = z.array(EventSchema);
 export const insertBukuAcaraData = createServerFn({ method: "POST" })
 	.validator(ImportPayloadSchema)
 	.handler(async ({ data }) => {
-		// Gunakan transaksi agar jika gagal di tengah jalan, seluruh data di-rollback
 		await db.transaction(async (tx) => {
 			for (const ev of data) {
-				// Insert Acara
 				const [insertedEvent] = await tx
 					.insert(events)
 					.values({
@@ -47,34 +47,34 @@ export const insertBukuAcaraData = createServerFn({ method: "POST" })
 					.returning({ id: events.id });
 
 				for (const ht of ev.heats) {
-					// Insert Heat/Seri
 					const [insertedHeat] = await tx
 						.insert(heats)
 						.values({
 							eventId: insertedEvent.id,
 							label: ht.label,
 							status: "PENDING",
+							isCurrent: false,
 							maxLaps: ht.maxLaps,
 						})
 						.returning({ id: heats.id });
 
-					// Insert Lanes (jika ada)
 					if (ht.lanes.length > 0) {
 						await tx.insert(laneAssignments).values(
 							ht.lanes.map((lane) => ({
 								heatId: insertedHeat.id,
 								laneNumber: lane.laneNumber,
 								athleteName: lane.athleteName,
+								birthYear: lane.birthYear || "-",
+								ageGroup: lane.ageGroup || "-",
 								clubName: lane.clubName || "-",
 								seedTime: lane.seedTime || "-",
-								status: "OK",
+								status: "OK" as const,
 							})),
 						);
 					}
 				}
 			}
 		});
-
 		return {
 			success: true,
 			message: "Data Buku Acara berhasil disimpan ke database!",

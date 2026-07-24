@@ -1,5 +1,6 @@
+// server/timer.functions.ts
 import { createServerFn } from "@tanstack/react-start";
-import { eq, asc, inArray } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 import { db } from "@/db";
 import {
 	events,
@@ -10,9 +11,11 @@ import {
 
 export const getLiveDashboard = createServerFn({ method: "GET" }).handler(
 	async () => {
+		// Kueri absolut tanpa tebak-tebakan status
 		const heat = await db.query.heats.findFirst({
-			where: inArray(heats.status, ["CURRENT", "RUNNING", "FINISHED"]),
+			where: eq(heats.isCurrent, true),
 		});
+
 		if (!heat) return null;
 
 		const event = await db.query.events.findFirst({
@@ -24,12 +27,11 @@ export const getLiveDashboard = createServerFn({ method: "GET" }).handler(
 			orderBy: (lanes, { asc }) => [asc(lanes.laneNumber)],
 		});
 
-		// Ambil SEMUA riwayat lap untuk masing-masing lintasan
 		const lanesWithData = await Promise.all(
 			lanes.map(async (lane) => {
 				const laps = await db.query.lapTimes.findMany({
 					where: eq(lapTimes.laneAssignmentId, lane.id),
-					orderBy: [asc(lapTimes.lapNumber)], // Urutkan dari Lap 1 ke atas
+					orderBy: [asc(lapTimes.lapNumber)],
 				});
 				return { ...lane, laps };
 			}),

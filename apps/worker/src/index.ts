@@ -33,7 +33,6 @@ const client = mqtt.connect(MQTT_BROKER);
 client.on("connect", () => {
   console.log("[MQTT Worker] Terhubung ke broker");
 
-  // Menyesuaikan dengan topik yang ditembakkan oleh UI dan ESP32 terbaru
   client.subscribe("swimtimer/evt/start");
   client.subscribe("swimtimer/evt/lap");
   client.subscribe("swimtimer/cmd/stop");
@@ -63,8 +62,9 @@ client.on("message", async (topic, message) => {
 // HANDLER: PISTOL START (GUN)
 // ==========================================
 async function handleStarterStart() {
+  // Hanya cari heat yang TAMPIL DI LAYAR (isCurrent) dan BELUM DIMULAI (PENDING)
   const readyHeat = await db.query.heats.findFirst({
-    where: eq(heats.status, "CURRENT"),
+    where: and(eq(heats.isCurrent, true), eq(heats.status, "PENDING")),
   });
 
   if (readyHeat) {
@@ -73,14 +73,12 @@ async function handleStarterStart() {
       .set({
         status: "RUNNING",
         startedAt: new Date(),
-        // hardwareStartMillis tidak lagi krusial, tapi bisa diset null/0
-        // karena kalkulasi waktu sudah diambil alih 100% oleh ESP32
       })
       .where(eq(heats.id, readyHeat.id));
 
     console.log(`[MQTT] Gun Fired! Heat ${readyHeat.label} -> RUNNING.`);
   } else {
-    console.warn("[MQTT] Sinyal pistol diterima, tapi tidak ada Heat CURRENT.");
+    console.warn("[MQTT] Sinyal pistol diterima, tapi tidak ada Heat yang diset aktif (CURRENT) dan berstatus PENDING.");
   }
 }
 
@@ -90,14 +88,13 @@ async function handleStarterStart() {
 async function handleTimerLap(payload: { lane: number; elapsed_ms: number }) {
   const { lane, elapsed_ms } = payload;
 
-  // 1. Pastikan ada heat yang sedang berjalan
+  // Pastikan ada heat yang sedang berjalan DAN merupakan heat yang aktif di layar
   const runningHeat = await db.query.heats.findFirst({
-    where: eq(heats.status, "RUNNING"),
+    where: and(eq(heats.isCurrent, true), eq(heats.status, "RUNNING")),
   });
 
   if (!runningHeat) return;
 
-  // 2. Cari data peserta di lintasan tersebut pada heat ini
   const assignment = await db.query.laneAssignments.findFirst({
     where: and(
       eq(laneAssignments.heatId, runningHeat.id),
@@ -106,11 +103,8 @@ async function handleTimerLap(payload: { lane: number; elapsed_ms: number }) {
   });
 
   if (!assignment) return;
-
-  // Jika peserta ini sudah finish atau didiskualifikasi, abaikan sentuhan ekstra
   if (assignment.finalTimeMillis || assignment.status !== "OK") return;
 
-  // 3. Tentukan urutan Lap dengan menghitung data yang sudah ada di database
   const existingLaps = await db
     .select({ count: count() })
     .from(lapTimes)
@@ -119,16 +113,14 @@ async function handleTimerLap(payload: { lane: number; elapsed_ms: number }) {
   const currentLapOrder = Number(existingLaps[0].count) + 1;
   const splitTimeDisplay = formatTime(elapsed_ms);
 
-  // 4. Simpan catatan lap
   await db.insert(lapTimes).values({
     laneAssignmentId: assignment.id,
     lapNumber: currentLapOrder,
-    splitTime: splitTimeDisplay,      // Waktu per lap (sebagai referensi)
-    cumulativeTime: splitTimeDisplay, // Total waktu dari start
+    splitTime: splitTimeDisplay,
+    cumulativeTime: splitTimeDisplay,
     rawMillis: elapsed_ms,
   });
 
-  // 5. Cek apakah batas lap sudah tercapai (Finish)
   if (currentLapOrder >= runningHeat.maxLaps) {
     await db
       .update(laneAssignments)
@@ -139,8 +131,6 @@ async function handleTimerLap(payload: { lane: number; elapsed_ms: number }) {
       .where(eq(laneAssignments.id, assignment.id));
 
     console.log(`[MQTT] Lane ${lane} FINISH di ${splitTimeDisplay}`);
-
-    // Opsional: Cek apakah SEMUA lintasan sudah finish, jika iya ubah heat ke FINISHED
     await checkAllLanesFinished(runningHeat.id);
   } else {
     console.log(`[MQTT] Lane ${lane} Lap ${currentLapOrder} di ${splitTimeDisplay}`);
@@ -151,8 +141,9 @@ async function handleTimerLap(payload: { lane: number; elapsed_ms: number }) {
 // HANDLER: FORCE STOP / FINISH
 // ==========================================
 async function handleForceStop() {
+  // Hanya hentikan heat yang berjalan dan aktif di layar
   const runningHeat = await db.query.heats.findFirst({
-    where: eq(heats.status, "RUNNING"),
+    where: and(eq(heats.isCurrent, true), eq(heats.status, "RUNNING")),
   });
 
   if (runningHeat) {
@@ -172,7 +163,6 @@ async function checkAllLanesFinished(heatId: number) {
     where: eq(laneAssignments.heatId, heatId),
   });
 
-  // Jika semua lintasan yang statusnya "OK" sudah memiliki finalTimeMillis
   const allFinished = allLanes
     .filter(l => l.status === "OK")
     .every(l => l.finalTimeMillis !== null);

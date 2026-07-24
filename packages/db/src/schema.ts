@@ -30,10 +30,10 @@ export const heats = pgTable("heats", {
   label: integer("label").notNull(), // cth: 1 (untuk Seri 1)
 
   status: varchar("status", {
-    enum: ["PENDING", "CURRENT", "RUNNING", "FINISHED"],
+    enum: ["PENDING", "RUNNING", "FINISHED", "STOPPED"],
   }).default("PENDING"),
 
-
+  isCurrent: boolean("is_current").default(false).notNull(),
   isSynced: boolean("is_synced").default(false),
   maxLaps: integer("max_laps").default(1).notNull(),
 
@@ -53,7 +53,9 @@ export const laneAssignments = pgTable("lane_assignments", {
 
   // Data dari Excel
   athleteName: varchar("athlete_name"),
-  clubName: varchar("club_name"),
+  birthYear: varchar("birth_year"), // Kolom: Thn Lahir
+  ageGroup: varchar("age_group"),   // Kolom: KU
+  clubName: varchar("club_name"),   // Kolom: Asal Sekolah/Klub
   seedTime: varchar("seed_time"), // Untuk kolom QET di Excel (cth: "02:58.94" atau "NT")
 
   // Hasil Lomba
