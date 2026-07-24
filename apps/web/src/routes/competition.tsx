@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
+import MainTimer from "@/components/main-timer";
 
-import TimerDashboard from "#/components/main-timer";
+export const Route = createFileRoute("/competition")({
+	component: RouteComponent,
+});
 
-export const Route = createFileRoute("/competition")({ component: App });
-
-function App() {
-  return <TimerDashboard />;
+function RouteComponent() {
+	return <MainTimer />;
 }

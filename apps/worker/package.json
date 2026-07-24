@@ -8,15 +8,15 @@
   },
   "dependencies": {
     "@swimmer-timer/db": "workspace:*",
-    "dotenv": "^16.4.5",
+    "dotenv": "^17.3.1",
     "drizzle-orm": "^0.45.1",
-    "mqtt": "^5.10.1",
-    "pg": "^8.16.3"
+    "mqtt": "^5.15.2",
+    "pg": "^8.22.0"
   },
   "devDependencies": {
-    "@types/node": "^22.10.2",
+    "@types/node": "^26.1.1",
     "@types/pg": "^8.15.6",
     "tsx": "^4.21.0",
-    "typescript": "^5.7.2"
+    "typescript": "^7.0.2"
   }
 }

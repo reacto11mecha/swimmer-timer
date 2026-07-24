@@ -1,9 +1,10 @@
+// src/components/mainindex.tsx
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/")({
-  component: RouteComponent,
+	component: RouteComponent,
 });
 
 function RouteComponent() {
-  return <div>Soon to be a full list of data</div>;
+	return <div>Soon to be a full list of data</div>;
 }
