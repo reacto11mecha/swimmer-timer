@@ -1,4 +1,4 @@
-// src/routes/competition.tsx
+// apps/web/src/routes/preparation.tsx
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect, useRef } from "react";

@@ -1,3 +1,4 @@
+// apps/worker/src/index.ts
 import mqtt from "mqtt";
 import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -33,9 +34,10 @@ const client = mqtt.connect(MQTT_BROKER);
 client.on("connect", () => {
   console.log("[MQTT Worker] Terhubung ke broker");
 
+  // Perbaiki subscribe sesuai topik yang dikirim web (swimtimer/cmd/control)
   client.subscribe("swimtimer/evt/start");
   client.subscribe("swimtimer/evt/lap");
-  client.subscribe("swimtimer/cmd/stop");
+  client.subscribe("swimtimer/cmd/control"); // ganti dari swimtimer/cmd/stop
 });
 
 client.on("message", async (topic, message) => {
@@ -49,8 +51,8 @@ client.on("message", async (topic, message) => {
       case "swimtimer/evt/lap":
         await handleTimerLap(payload);
         break;
-      case "swimtimer/cmd/stop":
-        await handleForceStop();
+      case "swimtimer/cmd/control":
+        await handleControlCommand(payload);
         break;
     }
   } catch (err) {
@@ -138,7 +140,26 @@ async function handleTimerLap(payload: { lane: number; elapsed_ms: number }) {
 }
 
 // ==========================================
-// HANDLER: FORCE STOP / FINISH
+// HANDLER: CONTROL COMMAND (dari web)
+// ==========================================
+async function handleControlCommand(payload: { command?: string }) {
+  const { command } = payload;
+  if (!command) return;
+
+  switch (command) {
+    case "STOP":
+      await handleForceStop();
+      break;
+    case "RESET":
+      await handleResetFromWeb();
+      break;
+    default:
+      console.warn(`[MQTT] Command tidak dikenal: ${command}`);
+  }
+}
+
+// ==========================================
+// HANDLER: FORCE STOP (dari web)
 // ==========================================
 async function handleForceStop() {
   // Hanya hentikan heat yang berjalan dan aktif di layar
@@ -147,11 +168,43 @@ async function handleForceStop() {
   });
 
   if (runningHeat) {
+    // Gunakan status STOPPED agar bisa dibedakan dengan FINISHED
     await db
       .update(heats)
-      .set({ status: "FINISHED" })
+      .set({ status: "STOPPED" })
       .where(eq(heats.id, runningHeat.id));
-    console.log(`[MQTT] Lomba dihentikan paksa. Heat status -> FINISHED.`);
+    console.log(`[MQTT] Heat ${runningHeat.label} dihentikan paksa (STOPPED).`);
+  } else {
+    console.warn("[MQTT] Tidak ada heat yang sedang berjalan untuk dihentikan.");
+  }
+}
+
+// ==========================================
+// HANDLER: RESET DARI WEB (jaring pengaman)
+// ==========================================
+async function handleResetFromWeb() {
+  // Cari heat yang saat ini isCurrent = true dan statusnya RUNNING atau PENDING
+  const currentHeat = await db.query.heats.findFirst({
+    where: and(
+      eq(heats.isCurrent, true),
+      // status bisa PENDING (kalau belum start) atau RUNNING (kalau sedang jalan)
+    ),
+  });
+
+  if (currentHeat) {
+    // Jika heat sedang berjalan, kita hentikan paksa sebagai STOPPED
+    if (currentHeat.status === "RUNNING") {
+      await db
+        .update(heats)
+        .set({ status: "STOPPED" })
+        .where(eq(heats.id, currentHeat.id));
+      console.log(`[MQTT] Reset: Heat ${currentHeat.label} yang sedang berjalan dihentikan (STOPPED).`);
+    }
+    // Jika masih PENDING, tidak perlu ubah status, cukup biarkan.
+    // Karena setelah reset, web akan mengirim setup baru?
+    // Di alur kita, web hanya kirim RESET setelah mengubah isCurrent di database.
+    // Jadi saat RESET tiba, heat yang isCurrent sudah heat baru (PENDING).
+    // Kita tidak perlu ubah statusnya karena memang belum dimulai.
   }
 }
 
@@ -168,10 +221,13 @@ async function checkAllLanesFinished(heatId: number) {
     .every(l => l.finalTimeMillis !== null);
 
   if (allFinished) {
-    await db
-      .update(heats)
-      .set({ status: "FINISHED" })
-      .where(eq(heats.id, heatId));
+    await db.update(heats).set({ status: "FINISHED" }).where(eq(heats.id, heatId));
     console.log(`[MQTT] Semua perenang selesai. Heat otomatis ditutup (FINISHED).`);
+
+    client.publish("swimtimer/evt/race/finish", JSON.stringify({
+      status: "FINISHED",
+      heatId: heatId
+    }));
   }
+
 }
