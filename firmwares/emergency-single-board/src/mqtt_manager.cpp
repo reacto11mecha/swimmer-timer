@@ -12,7 +12,7 @@ extern uint8_t currentBatteryPct;
 // Kredensial (Ganti dengan milik Anda)
 const char *WIFI_SSID = "hitoriejaya";
 const char *WIFI_PASS = "rularulayabalalala";
-const char *MQTT_BROKER = "192.168.0.6"; // IP Server Go / Mosquitto Anda
+const char *MQTT_BROKER = "192.168.0.2"; // IP Server Go / Mosquitto Anda
 const int MQTT_PORT = 1883;
 const char *MQTT_CLIENT_ID = "SwimTimerBox_01";
 
