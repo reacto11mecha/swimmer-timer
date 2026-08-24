@@ -1,34 +1,18 @@
-import mqtt from "mqtt";
+// apps/web/src/server/mqtt.functions.ts
+import { publishCommand } from "./mqtt-client";
 
 export async function publishResetToHardware() {
-  return new Promise((resolve, reject) => {
-    // Gunakan URL MQTT dari .env
-    const brokerUrl = process.env.VITE_MQTT_URL || "mqtt://127.0.0.1:1883";
-    const client = mqtt.connect(brokerUrl);
+  return publishCommand("control", { command: "RESET" });
+}
 
-    client.on("connect", () => {
-      // Publish payload reset
-      client.publish(
-        "server/reset",
-        JSON.stringify({ command: "RESET" }),
-        (err) => {
-          if (err) {
-            console.error("Gagal mengirim reset MQTT:", err);
-            reject(err);
-          } else {
-            console.log("Sinyal server/reset berhasil dikirim ke perangkat.");
-            resolve(true);
-          }
-          // Segera tutup koneksi agar tidak memory leak di web server
-          client.end();
-        },
-      );
-    });
+export async function publishStopToHardware() {
+  return publishCommand("control", { command: "STOP" });
+}
 
-    client.on("error", (err) => {
-      console.error("MQTT Client Error:", err);
-      client.end();
-      reject(err);
-    });
-  });
+// Fungsi baru: stop lalu reset hardware (untuk transisi heat)
+export async function publishStopAndResetHardware() {
+  await publishStopToHardware();
+  // Jeda kecil agar hardware sempat memproses STOP sebelum RESET
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  await publishResetToHardware();
 }

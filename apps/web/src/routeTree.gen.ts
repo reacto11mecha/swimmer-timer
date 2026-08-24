@@ -9,20 +9,15 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as PreparationRouteImport } from './routes/preparation'
-import { Route as HardwareRouteImport } from './routes/hardware'
-import { Route as CompetitionRouteImport } from './routes/competition'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as CompetitionRouteImport } from './routes/competition'
+import { Route as HardwareRouteImport } from './routes/hardware'
+import { Route as PreparationRouteImport } from './routes/preparation'
 import { Route as ApiTrpcSplatRouteImport } from './routes/api.trpc.$'
 
-const PreparationRoute = PreparationRouteImport.update({
-  id: '/preparation',
-  path: '/preparation',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const HardwareRoute = HardwareRouteImport.update({
-  id: '/hardware',
-  path: '/hardware',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CompetitionRoute = CompetitionRouteImport.update({
@@ -30,9 +25,14 @@ const CompetitionRoute = CompetitionRouteImport.update({
   path: '/competition',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const HardwareRoute = HardwareRouteImport.update({
+  id: '/hardware',
+  path: '/hardware',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PreparationRoute = PreparationRouteImport.update({
+  id: '/preparation',
+  path: '/preparation',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiTrpcSplatRoute = ApiTrpcSplatRouteImport.update({
@@ -87,18 +87,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/preparation': {
-      id: '/preparation'
-      path: '/preparation'
-      fullPath: '/preparation'
-      preLoaderRoute: typeof PreparationRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/hardware': {
-      id: '/hardware'
-      path: '/hardware'
-      fullPath: '/hardware'
-      preLoaderRoute: typeof HardwareRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/competition': {
@@ -108,11 +101,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CompetitionRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/hardware': {
+      id: '/hardware'
+      path: '/hardware'
+      fullPath: '/hardware'
+      preLoaderRoute: typeof HardwareRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/preparation': {
+      id: '/preparation'
+      path: '/preparation'
+      fullPath: '/preparation'
+      preLoaderRoute: typeof PreparationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/trpc/$': {

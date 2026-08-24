@@ -1,3 +1,4 @@
+// firmwares/emergency-single-board/src/hardware.cpp
 #include <Arduino.h>
 #include <Wire.h>
 #include <U8g2lib.h>

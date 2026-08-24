@@ -1,3 +1,4 @@
+// firmwares/emergency-single-board/src/mqtt_manager.cpp
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
@@ -11,7 +12,7 @@ extern uint8_t currentBatteryPct;
 // Kredensial (Ganti dengan milik Anda)
 const char *WIFI_SSID = "hitoriejaya";
 const char *WIFI_PASS = "rularulayabalalala";
-const char *MQTT_BROKER = "192.168.0.6"; // IP Server Go / Mosquitto Anda
+const char *MQTT_BROKER = "192.168.0.2"; // IP Server Go / Mosquitto Anda
 const int MQTT_PORT = 1883;
 const char *MQTT_CLIENT_ID = "SwimTimerBox_01";
 
@@ -19,47 +20,33 @@ WiFiClient espClient;
 PubSubClient mqttClient(espClient);
 
 // Fungsi Callback jika ada pesan masuk dari Server
-void mqtt_callback(char *topic, byte *payload, unsigned int length)
-{
-    // Ubah payload menjadi string
+void mqtt_callback(char *topic, byte *payload, unsigned int length) {
     String msg = "";
-    for (unsigned int i = 0; i < length; i++)
-    {
+    for (unsigned int i = 0; i < length; i++) {
         msg += (char)payload[i];
     }
 
     Serial.printf("Pesan masuk di topik %s: %s\n", topic, msg.c_str());
 
-    // Parsing JSON
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, msg);
-    if (error)
-    {
+    if (error) {
         Serial.println("Gagal parsing JSON!");
         return;
     }
 
-    if (String(topic) == TOPIC_CMD_CONTROL)
-    {
+    if (String(topic) == TOPIC_CMD_CONTROL) {
         String cmd = doc["command"].as<String>();
-        if (cmd == "STOP")
-        {
+        Serial.printf("CMD diterima: %s\n", cmd.c_str());
+        if (cmd == "STOP") {
             currentState = STATE_STOPPED;
-        }
-        else if (cmd == "RESET")
-        {
+            Serial.println("State berubah ke STOPPED");
+        } else if (cmd == "RESET") {
             currentState = STATE_READY;
             startTimeMs = 0;
-        }
-    }
-    else if (String(topic) == TOPIC_CMD_SETUP)
-    {
-        // Logika untuk menyimpan race_id atau lane aktif bisa ditambahkan di sini
-        String status = doc["state"].as<String>();
-        if (status == "READY")
-        {
-            currentState = STATE_READY;
-            startTimeMs = 0;
+            Serial.println("State berubah ke READY, startTimeMs direset");
+        } else {
+            Serial.println("CMD tidak dikenali");
         }
     }
 }
