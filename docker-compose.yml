@@ -73,6 +73,9 @@ services:
     environment:
       DATABASE_URL: postgres://loremipsum:loremipsum@db:5432/loremipsum
       VITE_MQTT_WS_URL: ws://192.168.0.2:9001
+    devices:
+      - "/dev/usb/lp0:/dev/usb/lp0"
+    privileged: true
 
 volumes:
   db_data:
