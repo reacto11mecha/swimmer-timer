@@ -42,5 +42,37 @@ services:
       # Upstream servers your Docker host will sync with
       - NTP_SERVERS=time.google.com,pool.ntp.org
 
+  worker:
+      build:
+        context: .
+        dockerfile: Dockerfile.worker
+      container_name: swim_worker
+      restart: unless-stopped
+      depends_on:
+        db:
+          condition: service_healthy
+        mqtt5:
+          condition: service_started
+      environment:
+        DATABASE_URL: postgres://loremipsum:loremipsum@db:5432/loremipsum
+        MQTT_URL: mqtt://mqtt5:1883
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: swim_web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      mqtt5:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgres://loremipsum:loremipsum@db:5432/loremipsum
+      VITE_MQTT_WS_URL: ws://192.168.0.2:9001
+
 volumes:
   db_data:

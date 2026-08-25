@@ -1,0 +1,21 @@
+FROM node:22-alpine
+WORKDIR /app
+
+# Install pnpm
+RUN npm install -g pnpm
+
+# Salin file workspace (wajib)
+COPY pnpm-workspace.yaml pnpm-lock.yaml ./
+
+# Langsung salin folder apps dan packages
+COPY apps/ ./apps/
+COPY packages/ ./packages/
+
+# Lanjut install
+RUN pnpm install --frozen-lockfile
+
+# Masuk ke folder worker
+WORKDIR /app/apps/worker
+
+# Jalankan worker
+CMD ["pnpm", "start"]
