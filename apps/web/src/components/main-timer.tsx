@@ -5,6 +5,7 @@ import mqtt from "mqtt";
 
 import { getLiveDashboard } from "@/server/timer.functions";
 import { activateNextHeat } from "@/server/heat.functions";
+import { printHeatResult } from "@/server/print.functions";
 import {
 	publishResetToHardware as resetHardware,
 	publishStopToHardware as stopHardware,
@@ -34,7 +35,9 @@ import {
 	History,
 	AlertTriangle,
 	ArrowRight,
+	Printer,
 } from "lucide-react";
+import { toast } from "sonner";
 
 interface ActivityLog {
 	id: string;
@@ -243,6 +246,12 @@ export default function TimerDashboard() {
 						"🏁 Semua perenang telah menyelesaikan perlombaan!",
 						"success",
 					);
+
+					// Kita butuh ID heat yang aktif untuk dicetak
+					if (dashboard?.heat) {
+						addLog("Mencetak struk hasil otomatis...", "info");
+						printMutation.mutate(dashboard.heat.id);
+					}
 				}
 			} catch (err) {
 				console.warn("Gagal memproses pesan MQTT:", err);
@@ -307,6 +316,17 @@ export default function TimerDashboard() {
 		},
 		onError: (err: any) => {
 			alert(err.message);
+		},
+	});
+	const printMutation = useMutation({
+		mutationFn: (heatId: number) => printHeatResult({ data: { heatId } }),
+		onSuccess: (res) => {
+			addLog(res.message as string, "success");
+			toast.success(res.message as string);
+		},
+		onError: (err: any) => {
+			addLog(`Gagal Print: ${err.message}`, "destructive");
+			toast.error(err.message);
 		},
 	});
 
@@ -423,6 +443,23 @@ export default function TimerDashboard() {
 					>
 						<AlertTriangle className="mr-2 h-5 w-5" />
 						{stopMutation.isPending ? "Menghentikan..." : "Force Stop"}
+					</Button>
+
+					<Button
+						size="lg"
+						variant="outline"
+						className="w-48 bg-white dark:bg-slate-950"
+						disabled={
+							(raceState !== "FINISHED" && raceState !== "STOPPED") ||
+							printMutation.isPending ||
+							!dashboard?.heat
+						}
+						onClick={() =>
+							dashboard?.heat && printMutation.mutate(dashboard.heat.id)
+						}
+					>
+						<Printer className="mr-2 h-5 w-5" />
+						{printMutation.isPending ? "Mencetak..." : "Print Struk"}
 					</Button>
 
 					<div className="flex-1"></div>

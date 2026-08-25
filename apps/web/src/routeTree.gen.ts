@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as CompetitionRouteImport } from './routes/competition'
 import { Route as HardwareRouteImport } from './routes/hardware'
 import { Route as PreparationRouteImport } from './routes/preparation'
+import { Route as TvRouteImport } from './routes/tv'
 import { Route as ApiTrpcSplatRouteImport } from './routes/api.trpc.$'
 
 const IndexRoute = IndexRouteImport.update({
@@ -35,6 +36,11 @@ const PreparationRoute = PreparationRouteImport.update({
   path: '/preparation',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TvRoute = TvRouteImport.update({
+  id: '/tv',
+  path: '/tv',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiTrpcSplatRoute = ApiTrpcSplatRouteImport.update({
   id: '/api/trpc/$',
   path: '/api/trpc/$',
@@ -46,6 +52,7 @@ export interface FileRoutesByFullPath {
   '/competition': typeof CompetitionRoute
   '/hardware': typeof HardwareRoute
   '/preparation': typeof PreparationRoute
+  '/tv': typeof TvRoute
   '/api/trpc/$': typeof ApiTrpcSplatRoute
 }
 export interface FileRoutesByTo {
@@ -53,6 +60,7 @@ export interface FileRoutesByTo {
   '/competition': typeof CompetitionRoute
   '/hardware': typeof HardwareRoute
   '/preparation': typeof PreparationRoute
+  '/tv': typeof TvRoute
   '/api/trpc/$': typeof ApiTrpcSplatRoute
 }
 export interface FileRoutesById {
@@ -61,19 +69,23 @@ export interface FileRoutesById {
   '/competition': typeof CompetitionRoute
   '/hardware': typeof HardwareRoute
   '/preparation': typeof PreparationRoute
+  '/tv': typeof TvRoute
   '/api/trpc/$': typeof ApiTrpcSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/competition' | '/hardware' | '/preparation' | '/api/trpc/$'
+  fullPaths:
+    '/' | '/competition' | '/hardware' | '/preparation' | '/tv' | '/api/trpc/$'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/competition' | '/hardware' | '/preparation' | '/api/trpc/$'
+  to:
+    '/' | '/competition' | '/hardware' | '/preparation' | '/tv' | '/api/trpc/$'
   id:
     | '__root__'
     | '/'
     | '/competition'
     | '/hardware'
     | '/preparation'
+    | '/tv'
     | '/api/trpc/$'
   fileRoutesById: FileRoutesById
 }
@@ -82,6 +94,7 @@ export interface RootRouteChildren {
   CompetitionRoute: typeof CompetitionRoute
   HardwareRoute: typeof HardwareRoute
   PreparationRoute: typeof PreparationRoute
+  TvRoute: typeof TvRoute
   ApiTrpcSplatRoute: typeof ApiTrpcSplatRoute
 }
 
@@ -115,6 +128,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PreparationRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tv': {
+      id: '/tv'
+      path: '/tv'
+      fullPath: '/tv'
+      preLoaderRoute: typeof TvRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/trpc/$': {
       id: '/api/trpc/$'
       path: '/api/trpc/$'
@@ -130,6 +150,7 @@ const rootRouteChildren: RootRouteChildren = {
   CompetitionRoute: CompetitionRoute,
   HardwareRoute: HardwareRoute,
   PreparationRoute: PreparationRoute,
+  TvRoute: TvRoute,
   ApiTrpcSplatRoute: ApiTrpcSplatRoute,
 }
 export const routeTree = rootRouteImport
