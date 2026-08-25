@@ -1,4 +1,3 @@
-// firmwares/emergency-single-board/src/mqtt_manager.cpp
 #ifndef CONFIG_H
 #define CONFIG_H
 
@@ -7,11 +6,14 @@
 // --- PIN DEFINITIONS ---
 const uint8_t PIN_STARTER = 23;
 const uint8_t PIN_LANES[8] = {13, 12, 14, 27, 26, 25, 33, 32};
-// PENTING: Pin 12 adalah strapping pin di ESP32. Pastikan tidak tertarik HIGH (oleh external pullup)
-// saat booting, atau gunakan pin lain jika memungkinkan (misal 4 atau 5).
 
+// I2C untuk OLED & RTC
 const uint8_t I2C_SDA = 19;
 const uint8_t I2C_SCL = 18;
+
+// UART2 untuk DFPlayer
+const uint8_t DFPLAYER_RX = 16;
+const uint8_t DFPLAYER_TX = 17;
 
 // --- MQTT TOPICS ---
 #define TOPIC_CMD_SETUP "swimtimer/cmd/setup"
@@ -21,16 +23,14 @@ const uint8_t I2C_SCL = 18;
 #define TOPIC_TELEMETRY "swimtimer/telemetry"
 
 // --- STATE MACHINE ---
-enum RaceState
-{
+enum RaceState {
     STATE_READY,
     STATE_RUNNING,
     STATE_STOPPED
 };
 
 // --- DATA STRUCTURES (Untuk FreeRTOS Queue) ---
-struct LapEvent
-{
+struct LapEvent {
     uint8_t lane_number;
     uint32_t elapsed_ms;
 };

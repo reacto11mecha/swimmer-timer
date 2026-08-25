@@ -1,4 +1,3 @@
-// src/routes/hardware.tsx
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
 import mqtt from "mqtt";
@@ -21,9 +20,6 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import {
-	Battery,
-	BatteryMedium,
-	BatteryWarning,
 	Cpu,
 	Wifi,
 	Terminal,
@@ -38,7 +34,6 @@ export const Route = createFileRoute("/hardware")({
 	component: HardwareTelemetryPage,
 });
 
-// Interface untuk Log
 interface MqttLog {
 	id: number;
 	time: string;
@@ -49,8 +44,6 @@ interface MqttLog {
 function HardwareTelemetryPage() {
 	const [telemetry, setTelemetry] = useState({
 		isConnected: false,
-		voltage: 0.0,
-		percentage: 0,
 		uptime: "0s",
 		lastPing: "-",
 		rssi: -100,
@@ -61,10 +54,7 @@ function HardwareTelemetryPage() {
 	const clientRef = useRef<mqtt.MqttClient | null>(null);
 
 	useEffect(() => {
-		// URL Broker WebSocket (Sesuaikan port dengan konfigurasi Mosquitto Anda)
-		// Umumnya port 9001 untuk WebSocket tanpa TLS, 1883 untuk TCP biasa
 		const wsUrl = import.meta.env.VITE_MQTT_WS_URL || "ws://localhost:9001";
-
 		const client = mqtt.connect(wsUrl, {
 			clientId: `web_dashboard_${Math.random().toString(16).slice(2, 8)}`,
 			keepalive: 30,
@@ -74,35 +64,37 @@ function HardwareTelemetryPage() {
 
 		client.on("connect", () => {
 			setTelemetry((prev) => ({ ...prev, isConnected: true }));
-
-			// Subscribe ke topik-topik krusial
 			client.subscribe("swimtimer/telemetry");
 			client.subscribe("swimtimer/evt/#");
-			client.subscribe("swimtimer/cmd/#"); // Pantau juga command dari server
+			client.subscribe("swimtimer/cmd/#");
 		});
 
 		client.on("message", (topic, message) => {
 			const payloadString = message.toString();
 
-			// 1. Parsing khusus untuk Telemetri Hardware
-			if (topic === "swimtimer/telemetry") {
-				try {
-					const data = JSON.parse(payloadString);
+			try {
+				const data = JSON.parse(payloadString);
+
+				// 1. Parsing Telemetri Rutin
+				if (topic === "swimtimer/telemetry") {
 					setTelemetry((prev) => ({
 						...prev,
-						voltage: data.v ?? prev.voltage,
-						percentage: data.batt ?? prev.percentage,
 						uptime: data.uptime ?? prev.uptime,
-						// Jika Anda menambahkan logika hitung ping (selisih ms)
-						lastPing: data.ping ? `${data.ping}ms` : prev.lastPing,
 						rssi: data.rssi ?? prev.rssi,
 					}));
-				} catch (error) {
-					console.error("Gagal parse telemetri:", error);
 				}
+				// 2. Parsing Balasan PING dari ESP32
+				else if (topic === "swimtimer/evt/pong") {
+					if (data.timestamp) {
+						const latency = Date.now() - data.timestamp;
+						setTelemetry((prev) => ({ ...prev, lastPing: `${latency}ms` }));
+					}
+				}
+			} catch (error) {
+				console.error("Gagal parse MQTT JSON:", error);
 			}
 
-			// 2. Tambahkan ke Log UI (Batasi maksimal 15 baris terakhir agar tidak memory leak)
+			// Tambahkan ke Log UI
 			setLogs((prevLogs) => {
 				const newLog: MqttLog = {
 					id: Date.now(),
@@ -123,11 +115,8 @@ function HardwareTelemetryPage() {
 			client.end();
 		});
 
-		// Cleanup saat berpindah halaman
 		return () => {
-			if (clientRef.current) {
-				clientRef.current.end();
-			}
+			if (clientRef.current) clientRef.current.end();
 		};
 	}, []);
 
@@ -159,28 +148,13 @@ function HardwareTelemetryPage() {
 
 	const handleManualPing = () => {
 		if (!clientRef.current || !telemetry.isConnected) return;
-
 		setIsRefreshing(true);
-		// Publish payload kosong atau spesifik ke topik ping
+		// Kirim stempel waktu saat ini ke ESP32
 		clientRef.current.publish(
 			"swimtimer/cmd/ping",
 			JSON.stringify({ timestamp: Date.now() }),
 		);
-
 		setTimeout(() => setIsRefreshing(false), 500);
-	};
-
-	const getBatteryIcon = (percent: number) => {
-		if (percent > 70) return <Battery className="w-8 h-8 text-green-500" />;
-		if (percent > 20)
-			return <BatteryMedium className="w-8 h-8 text-yellow-500" />;
-		return <BatteryWarning className="w-8 h-8 text-red-500 animate-pulse" />;
-	};
-
-	const getBatteryColor = (percent: number) => {
-		if (percent > 70) return "bg-green-500";
-		if (percent > 20) return "bg-yellow-500";
-		return "bg-red-500";
 	};
 
 	return (
@@ -206,7 +180,8 @@ function HardwareTelemetryPage() {
 				</Button>
 			</div>
 
-			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+			{/* Grid diubah menjadi 3 kolom karena baterai dihapus */}
+			<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between pb-2">
 						<CardTitle className="text-sm font-medium text-muted-foreground">
@@ -241,7 +216,7 @@ function HardwareTelemetryPage() {
 							</span>
 						</div>
 						<div className="flex items-center gap-2 mt-2">
-							<div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
+							<div className="h-2 w-[85%] bg-secondary rounded-full overflow-hidden">
 								<div
 									className={`h-full ${getSignalStatus(telemetry.rssi).color} transition-all duration-500`}
 									style={{
@@ -251,29 +226,6 @@ function HardwareTelemetryPage() {
 							</div>
 							<span className="text-xs text-muted-foreground font-mono">
 								{getSignalStatus(telemetry.rssi).text}
-							</span>
-						</div>
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader className="flex flex-row items-center justify-between pb-2">
-						<CardTitle className="text-sm font-medium text-muted-foreground">
-							Daya Baterai (ADC)
-						</CardTitle>
-						{getBatteryIcon(telemetry.percentage)}
-					</CardHeader>
-					<CardContent>
-						<div className="text-2xl font-bold">{telemetry.percentage}%</div>
-						<div className="flex items-center gap-2 mt-2">
-							<div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
-								<div
-									className={`h-full ${getBatteryColor(telemetry.percentage)} transition-all duration-500`}
-									style={{ width: `${telemetry.percentage}%` }}
-								/>
-							</div>
-							<span className="text-xs text-muted-foreground font-mono">
-								{telemetry.voltage}V
 							</span>
 						</div>
 					</CardContent>
@@ -298,8 +250,7 @@ function HardwareTelemetryPage() {
 			<Card>
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2">
-						<Terminal className="h-5 w-5" />
-						Live Event Logs (15 Pesan Terakhir)
+						<Terminal className="h-5 w-5" /> Live Event Logs (15 Pesan Terakhir)
 					</CardTitle>
 					<CardDescription>
 						Menyadap semua komunikasi yang terjadi di topik swimtimer/#
