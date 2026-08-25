@@ -1,9 +1,10 @@
 // src/routes/index.tsx
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { getHistoryData } from "@/server/history.functions";
+import { printHeatResult } from "@/server/print.functions";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +30,7 @@ import {
 	FolderClock,
 	History,
 	Clock,
+	Printer,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -42,6 +44,12 @@ function DashboardHomePage() {
 	const { data: events = [], isLoading } = useQuery({
 		queryKey: ["historyData"],
 		queryFn: () => getHistoryData(),
+	});
+
+	const printMutation = useMutation({
+		mutationFn: (heatId: number) => printHeatResult({ data: { heatId } }),
+		onSuccess: (res) => toast.success(res.message as string),
+		onError: (err: any) => toast.error(`Gagal mencetak: ${err.message}`),
 	});
 
 	// Logika Filter Data
@@ -227,8 +235,8 @@ function DashboardHomePage() {
 			) : (
 				<div className="space-y-8">
 					{filteredEvents.map((ev) => (
-						<Card key={ev.id} className="overflow-hidden shadow-sm">
-							<CardHeader className="bg-slate-50 dark:bg-slate-900/50 border-b">
+						<Card key={ev.id} className="shadow-sm p-0 gap-0">
+							<CardHeader className="sticky top-[60px] sm:top-[68px] z-30 bg-slate-50 dark:bg-slate-900 border-b pt-6 rounded-t-xl shadow-sm">
 								<CardTitle className="text-xl">
 									{ev.eventName}{" "}
 									<span className="text-muted-foreground font-normal ml-2">
@@ -241,7 +249,7 @@ function DashboardHomePage() {
 							<CardContent className="p-0">
 								{ev.heats.map((ht) => (
 									<div key={ht.id} className="border-b last:border-b-0">
-										<div className="px-6 py-3 bg-muted/30 flex justify-between items-center">
+										<div className="sticky top-[152px] sm:top-[160px] z-20 px-6 pt-7 pb-3 bg-slate-100/95 dark:bg-slate-800/95 backdrop-blur-md flex justify-between items-center border-b shadow-sm">
 											<div className="font-semibold text-sm flex items-center gap-2">
 												Seri (Heat) {ht.label}
 												<Badge
@@ -257,12 +265,31 @@ function DashboardHomePage() {
 													{ht.status}
 												</Badge>
 											</div>
-											<Badge
-												variant={ht.isSynced ? "secondary" : "destructive"}
-												className="text-[10px]"
-											>
-												{ht.isSynced ? "Tersinkronisasi" : "Belum Sinkron"}
-											</Badge>
+											<div className="flex items-center gap-3">
+												{(ht.status === "FINISHED" ||
+													ht.status === "STOPPED") && (
+													<Button
+														variant="outline"
+														size="sm"
+														className="h-7 text-xs bg-white dark:bg-slate-950"
+														// Eksekusi mutasi saat diklik, kirimkan ID heat-nya
+														onClick={() => printMutation.mutate(ht.id)}
+														// Nonaktifkan tombol saat sedang proses mencetak
+														disabled={printMutation.isPending}
+													>
+														<Printer className="w-3 h-3 mr-2" />
+														{printMutation.isPending
+															? "Mencetak..."
+															: "Print Struk"}
+													</Button>
+												)}
+												<Badge
+													variant={ht.isSynced ? "secondary" : "destructive"}
+													className="text-[10px]"
+												>
+													{ht.isSynced ? "Tersinkronisasi" : "Belum Sinkron"}
+												</Badge>
+											</div>
 										</div>
 
 										<div className="px-6 py-2 overflow-x-auto">
@@ -274,7 +301,7 @@ function DashboardHomePage() {
 														</TableHead>
 														<TableHead>Atlet</TableHead>
 														<TableHead>Klub</TableHead>
-														<TableHead>Seed Time</TableHead>
+														<TableHead>Peringkat</TableHead>
 														<TableHead className="text-right">
 															Waktu Final
 														</TableHead>
@@ -291,47 +318,67 @@ function DashboardHomePage() {
 															</TableCell>
 														</TableRow>
 													) : (
-														ht.lanes.map((lane) => (
-															<TableRow
-																key={lane.id}
-																className={
-																	lane.status !== "OK"
-																		? "bg-red-50/50 dark:bg-red-950/20"
-																		: ""
-																}
-															>
-																<TableCell className="text-center font-bold">
-																	{lane.laneNumber}
-																</TableCell>
-																<TableCell className="font-medium">
-																	{lane.athleteName}
-																	{lane.status !== "OK" && (
-																		<Badge
-																			variant="destructive"
-																			className="ml-2 text-[10px] h-4 py-0"
-																		>
-																			{lane.status}
-																		</Badge>
-																	)}
-																</TableCell>
-																<TableCell className="text-muted-foreground text-xs">
-																	{lane.clubName}
-																</TableCell>
-																<TableCell className="font-mono text-xs text-muted-foreground">
-																	{lane.seedTime}
-																</TableCell>
-																<TableCell className="text-right font-mono font-bold text-sm">
-																	{lane.finalTime ? (
-																		<span className="flex items-center justify-end gap-2 text-green-600 dark:text-green-400">
-																			{lane.finalTime}
-																			<Clock className="w-3 h-3" />
-																		</span>
-																	) : (
-																		"-"
-																	)}
-																</TableCell>
-															</TableRow>
-														))
+														// LOGIKA PERINGKAT:
+														// Kita urutkan berdasarkan waktu (finalTimeMillis).
+														// Yang statusnya bukan "OK" (misal DSQ/DNS) atau waktunya null, ditaruh di bawah.
+														[...ht.lanes]
+															.sort((a, b) => {
+																if (a.status !== "OK" && b.status === "OK")
+																	return 1;
+																if (a.status === "OK" && b.status !== "OK")
+																	return -1;
+																if (!a.finalTimeMillis) return 1;
+																if (!b.finalTimeMillis) return -1;
+																return a.finalTimeMillis - b.finalTimeMillis;
+															})
+															.map((lane, index) => {
+																// Tentukan peringkat: Jika statusnya OK dan ada waktu, kasih nomor urut
+																const isFinishedOk =
+																	lane.status === "OK" && lane.finalTimeMillis;
+																const rank = isFinishedOk ? index + 1 : "-";
+
+																return (
+																	<TableRow
+																		key={lane.id}
+																		className={
+																			lane.status !== "OK"
+																				? "bg-red-50/50 dark:bg-red-950/20"
+																				: ""
+																		}
+																	>
+																		<TableCell className="text-center font-bold">
+																			{lane.laneNumber}
+																		</TableCell>
+																		<TableCell className="font-medium">
+																			{lane.athleteName}
+																			{lane.status !== "OK" && (
+																				<Badge
+																					variant="destructive"
+																					className="ml-2 text-[10px] h-4 py-0"
+																				>
+																					{lane.status}
+																				</Badge>
+																			)}
+																		</TableCell>
+																		<TableCell className="text-muted-foreground text-xs">
+																			{lane.clubName || "-"}
+																		</TableCell>
+																		<TableCell className="text-center font-bold text-blue-600 dark:text-blue-400">
+																			{rank !== "-" ? `#${rank}` : "-"}
+																		</TableCell>
+																		<TableCell className="text-right font-mono font-bold text-sm">
+																			{lane.finalTime ? (
+																				<span className="flex items-center justify-end gap-2 text-green-600 dark:text-green-400">
+																					{lane.finalTime}
+																					<Clock className="w-3 h-3" />
+																				</span>
+																			) : (
+																				"-"
+																			)}
+																		</TableCell>
+																	</TableRow>
+																);
+															})
 													)}
 												</TableBody>
 											</Table>
