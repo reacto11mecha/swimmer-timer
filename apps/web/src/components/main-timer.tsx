@@ -7,8 +7,8 @@ import { getLiveDashboard } from "@/server/timer.functions";
 import { activateNextHeat } from "@/server/heat.functions";
 import { printHeatResult } from "@/server/print.functions";
 import {
-	publishResetToHardware as resetHardware,
-	publishStopToHardware as stopHardware,
+	triggerResetHardware,
+	triggerStopHardware,
 } from "@/server/mqtt.functions";
 
 import {
@@ -283,7 +283,7 @@ export default function TimerDashboard() {
 
 	// 4. MUTASI & LOGIKA UX TOMBOL AKSI
 	const resetMutation = useMutation({
-		mutationFn: () => resetHardware(),
+		mutationFn: () => triggerResetHardware(),
 		onSuccess: () => {
 			setRaceState("READY");
 			setLocalStartTime(null);
@@ -298,7 +298,7 @@ export default function TimerDashboard() {
 	});
 
 	const stopMutation = useMutation({
-		mutationFn: () => stopHardware(),
+		mutationFn: () => triggerStopHardware(),
 		onSuccess: () => {
 			addLog("Mengirim sinyal FORCE STOP ke perangkat keras...", "warning");
 		},
@@ -480,7 +480,7 @@ export default function TimerDashboard() {
 							"Memuat..."
 						) : nextHeat ? (
 							<>
-								Lanjut: {nextHeat.eventName} Seri {nextHeat.label}
+								Lanjut: {nextHeat.eventName} Heat {nextHeat.label}
 								<ArrowRight className="ml-2 h-5 w-5 shrink-0" />
 							</>
 						) : (

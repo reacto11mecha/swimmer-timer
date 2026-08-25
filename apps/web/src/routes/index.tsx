@@ -122,7 +122,7 @@ function DashboardHomePage() {
 					ht.lanes.forEach((lane) => {
 						// LOGIKA GABUNGAN: Jika status bukan OK, tulis statusnya. Jika OK, tulis waktunya.
 						let hasilAkhir = lane.finalTime || "-";
-						if (lane.status !== "OK") {
+						if (lane.status && lane.status !== "OK") {
 							hasilAkhir = lane.status; // Akan mencetak "DNS", "DSQ", dll.
 						}
 
