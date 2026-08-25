@@ -111,9 +111,13 @@ function PreparationPage() {
 
 					// Kalkulasi tebakan max lap
 					let maxLaps = 1;
-					const match = currentEvent.distanceStyle.match(/(\d+)m/i);
+					// Ambil angka dari teks (misal "150m Gaya Bebas" -> "150")
+					const match = currentEvent.distanceStyle.match(/(\d+)/);
 					if (match && match[1]) {
-						maxLaps = Math.ceil(parseInt(match[1]) / 50);
+						const distance = parseInt(match[1], 10);
+
+						// Rumus anti-pusing untuk semua kelipatan jarak
+						maxLaps = Math.ceil(distance / 100);
 					}
 
 					currentHeat = {
