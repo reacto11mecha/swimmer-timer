@@ -167,13 +167,25 @@ function PreparationPage() {
 
 				if (!startListData || !startListData.heats) continue;
 
-				// Transformasi format Speedzone ke format JSON internal kita
+				// 1. Petakan Gender ("male" -> "PUTRA")
+				const genderMap: Record<string, string> = {
+					male: "PUTRA",
+					female: "PUTRI",
+				};
+				const mappedGender = genderMap[event.category_types] || "CAMPURAN";
+
+				// 2. Petakan Grup Umur (misal: "A" -> "Grup A")
+				let mappedAgeGroup = "Semua Umur";
+				if (event.groups && event.groups.length > 0) {
+					mappedAgeGroup = `Grup ${event.groups[0].name}`;
+				}
+
 				const formattedEvent = {
-					server_event_id: startListData.id, // ID server external
-					eventName: startListData.name,
-					ageGroup: "Semua Umur", // Fallback jika tidak ada di API
-					distanceStyle: startListData.name, // Gunakan nama event sebagai style
-					gender: "Campuran", // Fallback
+					server_event_id: event.id,
+					eventName: event.name,
+					ageGroup: mappedAgeGroup,
+					distanceStyle: event.name,
+					gender: mappedGender,
 					heats: [] as any[],
 				};
 

@@ -15,9 +15,9 @@ export const getCompetitions = createServerFn({ method: "GET" }).handler(
 export const getEventsByCompetition = createServerFn({ method: "GET" })
 	.validator((competitionId: number) => competitionId)
 	.handler(async (ctx) => {
-		// Endpoint: /api/external/events?filter[competition_id]=<id>&sort=number
+		// Ubah per_page=50 menjadi per_page=200
 		const result = await fetchSpeedzone(
-			`/api/external/events?filter[competition_id]=${ctx.data}&sort=number&per_page=50`,
+			`/api/external/events?filter[competition_id]=${ctx.data}&sort=number&per_page=200`,
 		);
 		return result;
 	});
