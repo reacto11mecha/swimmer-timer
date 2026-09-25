@@ -153,7 +153,11 @@ function DashboardHomePage() {
 						if (lane.status && lane.status !== "OK") {
 							hasilAkhir = lane.status; // Cetak DSQ/DNF
 						} else if (!lane.finalTime) {
-							hasilAkhir = "DNS"; // Jika OK tapi waktu kosong, paksa jadi DNS
+						  if (ht.status === "FINISHED" || ht.status === "STOPPED") {
+								hasilAkhir = "DNS"; // Lomba selesai tapi tidak ada waktu = tidak hadir
+							} else {
+								hasilAkhir = "-"; // Lomba belum/sedang berjalan
+							}
 						}
 
 						sheet.addRow([
