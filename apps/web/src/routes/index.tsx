@@ -59,6 +59,7 @@ function DashboardHomePage() {
 	const syncToSpeedzoneMutation = useMutation({
 		mutationFn: (payload: {
 			serverEventId: number;
+			heatIds: number[];
 			lanes: Array<{
 				heat_lane_id: number;
 				result_time?: string | null;
@@ -67,6 +68,7 @@ function DashboardHomePage() {
 		}) => submitHeatResultsToSpeedzone({ data: payload }),
 		onSuccess: () => {
 			toast.success("Catatan waktu berhasil disinkronkan ke pusat!");
+			// invalidateQueries ini yang akan me-refresh tampilan agar label berubah jadi "Sudah Sinkron"
 			queryClient.invalidateQueries({ queryKey: ["historyData"] });
 		},
 		onError: (err: any) => {
@@ -191,11 +193,15 @@ function DashboardHomePage() {
 	const handleSync = async () => {
 		toast.info("Mengemas data hasil akhir untuk sinkronisasi...");
 
-		// Kita kumpulkan semua event yang memiliki heat dengan status "FINISHED"
+		// Tambahkan kondisi STOPPED pada filter utama
 		const eventsToSync = events.filter(
 			(ev) =>
-				ev.serverEventId !== null && // Harus punya ID dari Speedzone
-				ev.heats.some((ht) => ht.status === "FINISHED" && !ht.isSynced),
+				ev.serverEventId !== null &&
+				ev.heats.some(
+					(ht) =>
+						(ht.status === "FINISHED" || ht.status === "STOPPED") &&
+						!ht.isSynced,
+				),
 		);
 
 		if (eventsToSync.length === 0) {
@@ -205,17 +211,28 @@ function DashboardHomePage() {
 
 		for (const ev of eventsToSync) {
 			const lanesPayload: any[] = [];
+			const heatIdsToSync: number[] = [];
 
-			// Kumpulkan lintasan dari semua heat yang sudah selesai di event ini
 			ev.heats.forEach((ht) => {
-				if (ht.status === "FINISHED" && !ht.isSynced) {
+				// Tambahkan kondisi STOPPED pada saat loop data heat
+				if (
+					(ht.status === "FINISHED" || ht.status === "STOPPED") &&
+					!ht.isSynced
+				) {
+					heatIdsToSync.push(ht.id);
+
 					ht.lanes.forEach((lane) => {
 						if (lane.serverParticipantId) {
+							// Logika intersepsi (override) DNS yang sudah kita bahas
+							let currentStatus = (lane.status || "OK").toUpperCase();
+							if (currentStatus === "OK" && !lane.finalTime) {
+								currentStatus = "DNS";
+							}
+
 							lanesPayload.push({
-								heat_lane_id: lane.serverParticipantId, // ID lintasan dari Speedzone
-								result_time: lane.finalTime, // format: "MM:SS.cc" atau null
-								// Format status harus huruf kecil sesuai dokumen (ok, dq, dns)
-								result_status: (lane.status || "ok").toLowerCase() as
+								heat_lane_id: lane.serverParticipantId,
+								result_time: lane.finalTime,
+								result_status: currentStatus.toLowerCase() as
 									| "ok"
 									| "dq"
 									| "dns",
@@ -228,11 +245,9 @@ function DashboardHomePage() {
 			if (lanesPayload.length > 0 && ev.serverEventId) {
 				syncToSpeedzoneMutation.mutate({
 					serverEventId: ev.serverEventId,
+					heatIds: heatIdsToSync,
 					lanes: lanesPayload,
 				});
-
-				// TODO (di server): Pastikan Anda memperbarui ht.isSynced = true di database lokal
-				// setelah pemanggilan mutasi ini berhasil, agar tidak dikirim berulang kali.
 			}
 		}
 	};

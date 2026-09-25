@@ -1,4 +1,7 @@
 // apps/web/src/server/speedzone.functions.ts
+import { db } from "@/db";
+import { heats } from "@swimmer-timer/db/schema";
+import { inArray } from "drizzle-orm";
 import { createServerFn } from "@tanstack/react-start";
 import { fetchSpeedzone } from "./speedzone.api";
 
@@ -33,11 +36,12 @@ export const getStartingList = createServerFn({ method: "GET" })
 		return result;
 	});
 
-// 4. Kirim Hasil Lomba (Setor Waktu) ke Speedzone
+// 4. Kirim Hasil Lomba (Setor Waktu) ke Speedzone & Update Lokal
 export const submitHeatResultsToSpeedzone = createServerFn({ method: "POST" })
 	.validator(
 		(payload: {
 			serverEventId: number;
+			heatIds: number[]; // <-- Tambahan: Array ID heat lokal yang akan di-update
 			lanes: Array<{
 				heat_lane_id: number;
 				result_time?: string | null;
@@ -46,6 +50,7 @@ export const submitHeatResultsToSpeedzone = createServerFn({ method: "POST" })
 		}) => payload,
 	)
 	.handler(async (ctx) => {
+		// 1. Tembak API Eksternal
 		// Endpoint: PUT /api/external/events/{event}/results
 		const result = await fetchSpeedzone(
 			`/api/external/events/${ctx.data.serverEventId}/results`,
@@ -54,5 +59,14 @@ export const submitHeatResultsToSpeedzone = createServerFn({ method: "POST" })
 				body: JSON.stringify({ lanes: ctx.data.lanes }),
 			},
 		);
+
+		// 2. Jika API di atas sukses (tidak melempar error), update database lokal
+		if (ctx.data.heatIds.length > 0) {
+			await db
+				.update(heats)
+				.set({ isSynced: true })
+				.where(inArray(heats.id, ctx.data.heatIds));
+		}
+
 		return result;
 	});
