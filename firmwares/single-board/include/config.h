@@ -8,8 +8,8 @@ const uint8_t PIN_STARTER = 23;
 const uint8_t PIN_LANES[8] = {13, 12, 14, 27, 26, 25, 33, 32};
 
 // I2C untuk OLED & RTC
-const uint8_t I2C_SDA = 19;
-const uint8_t I2C_SCL = 18;
+const uint8_t I2C_SDA = 21;
+const uint8_t I2C_SCL = 22;
 
 // UART2 untuk DFPlayer
 const uint8_t DFPLAYER_RX = 16;

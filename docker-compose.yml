@@ -72,7 +72,10 @@ services:
         condition: service_started
     environment:
       DATABASE_URL: postgres://loremipsum:loremipsum@db:5432/loremipsum
-      VITE_MQTT_WS_URL: ws://192.168.0.2:9001
+      MQTT_URL: mqtt://${SERVER_IP:192.168.0.2}:1883
+      VITE_MQTT_WS_URL: ws://${SERVER_IP:192.168.0.2}:9001
+      SPEEDZONE_API_URL: ${SPEEDZONE_API_URL}
+      SPEEDZONE_API_TOKEN: ${SPEEDZONE_TOKEN}
     devices:
       - "/dev/usb/lp0:/dev/usb/lp0"
     privileged: true

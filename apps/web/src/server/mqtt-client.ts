@@ -1,7 +1,7 @@
 // apps/web/src/server/mqtt-client.ts
 import mqtt from "mqtt";
 
-const MQTT_BROKER = process.env.MQTT_URL || "mqtt://192.168.0.6:1883";
+const MQTT_BROKER = process.env.MQTT_URL || "mqtt://192.168.0.2:1883";
 
 // Buat koneksi persisten
 const client = mqtt.connect(MQTT_BROKER, {
