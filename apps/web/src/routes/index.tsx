@@ -1,10 +1,11 @@
-// src/routes/index.tsx
+// apps/web/src/routes/index.tsx
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { getHistoryData } from "@/server/history.functions";
 import { printHeatResult } from "@/server/print.functions";
+import { submitHeatResultsToSpeedzone } from "@/server/speedzone.functions";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -31,6 +32,7 @@ import {
 	History,
 	Clock,
 	Printer,
+	RefreshCw,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -38,6 +40,7 @@ export const Route = createFileRoute("/")({
 });
 
 function DashboardHomePage() {
+	const queryClient = useQueryClient();
 	const [filter, setFilter] = useState<"ALL" | "SYNCED" | "UNSYNCED">("ALL");
 
 	// Fetch semua histori data
@@ -50,6 +53,25 @@ function DashboardHomePage() {
 		mutationFn: (heatId: number) => printHeatResult({ data: { heatId } }),
 		onSuccess: (res) => toast.success(res.message as string),
 		onError: (err: any) => toast.error(`Gagal mencetak: ${err.message}`),
+	});
+
+	// Mutasi untuk Sinkronisasi ke Speedzone
+	const syncToSpeedzoneMutation = useMutation({
+		mutationFn: (payload: {
+			serverEventId: number;
+			lanes: Array<{
+				heat_lane_id: number;
+				result_time?: string | null;
+				result_status?: "ok" | "dq" | "dns";
+			}>;
+		}) => submitHeatResultsToSpeedzone({ data: payload }),
+		onSuccess: () => {
+			toast.success("Catatan waktu berhasil disinkronkan ke pusat!");
+			queryClient.invalidateQueries({ queryKey: ["historyData"] });
+		},
+		onError: (err: any) => {
+			toast.error(`Gagal sinkronisasi: ${err.message}`);
+		},
 	});
 
 	// Logika Filter Data
@@ -68,7 +90,7 @@ function DashboardHomePage() {
 		// Hanya tampilkan event yang memiliki heat setelah difilter
 		.filter((ev) => ev.heats.length > 0);
 
-	// Fungsi Ekspor Excel
+	// Fungsi Ekspor Excel (Dibiarkan aslinya)
 	const handleExportExcel = async () => {
 		toast.info("Menyiapkan dokumen Excel...");
 		try {
@@ -76,7 +98,6 @@ function DashboardHomePage() {
 			const workbook = new ExcelJS.Workbook();
 			const sheet = workbook.addWorksheet("Hasil & Riwayat");
 
-			// KEMBALI KE 7 KOLOM (Sesuai Gambar)
 			sheet.columns = [
 				{ width: 8 }, // A: Ln.
 				{ width: 35 }, // B: Nama
@@ -101,7 +122,6 @@ function DashboardHomePage() {
 					const heatRow = sheet.addRow([`Seri ${ht.label}`]);
 					heatRow.font = { italic: true, bold: true };
 
-					// HEADER 7 KOLOM
 					const headerRow = sheet.addRow([
 						"Ln.",
 						"Nama",
@@ -118,12 +138,10 @@ function DashboardHomePage() {
 						fgColor: { argb: "FFF2F2F2" },
 					};
 
-					// Baris Data Lintasan (Atlet)
 					ht.lanes.forEach((lane) => {
-						// LOGIKA GABUNGAN: Jika status bukan OK, tulis statusnya. Jika OK, tulis waktunya.
 						let hasilAkhir = lane.finalTime || "-";
 						if (lane.status && lane.status !== "OK") {
-							hasilAkhir = lane.status; // Akan mencetak "DNS", "DSQ", dll.
+							hasilAkhir = lane.status;
 						}
 
 						sheet.addRow([
@@ -133,7 +151,7 @@ function DashboardHomePage() {
 							lane.ageGroup,
 							lane.clubName,
 							lane.seedTime,
-							hasilAkhir, // <-- Hanya 7 data yang dimasukkan
+							hasilAkhir,
 						]);
 					});
 
@@ -159,9 +177,54 @@ function DashboardHomePage() {
 		}
 	};
 
-	// Fungsi Dummy Sinkronisasi
-	const handleSync = () => {
-		toast.warning("Fungsi sinkronisasi cloud akan segera hadir!");
+	// Eksekusi Sinkronisasi (Kirim Waktu Final)
+	const handleSync = async () => {
+		toast.info("Mengemas data hasil akhir untuk sinkronisasi...");
+
+		// Kita kumpulkan semua event yang memiliki heat dengan status "FINISHED"
+		const eventsToSync = events.filter(
+			(ev) =>
+				ev.serverEventId !== null && // Harus punya ID dari Speedzone
+				ev.heats.some((ht) => ht.status === "FINISHED" && !ht.isSynced),
+		);
+
+		if (eventsToSync.length === 0) {
+			toast.warning("Tidak ada data baru yang perlu disinkronkan.");
+			return;
+		}
+
+		for (const ev of eventsToSync) {
+			const lanesPayload: any[] = [];
+
+			// Kumpulkan lintasan dari semua heat yang sudah selesai di event ini
+			ev.heats.forEach((ht) => {
+				if (ht.status === "FINISHED" && !ht.isSynced) {
+					ht.lanes.forEach((lane) => {
+						if (lane.serverParticipantId) {
+							lanesPayload.push({
+								heat_lane_id: lane.serverParticipantId, // ID lintasan dari Speedzone
+								result_time: lane.finalTime, // format: "MM:SS.cc" atau null
+								// Format status harus huruf kecil sesuai dokumen (ok, dq, dns)
+								result_status: (lane.status || "ok").toLowerCase() as
+									| "ok"
+									| "dq"
+									| "dns",
+							});
+						}
+					});
+				}
+			});
+
+			if (lanesPayload.length > 0 && ev.serverEventId) {
+				syncToSpeedzoneMutation.mutate({
+					serverEventId: ev.serverEventId,
+					lanes: lanesPayload,
+				});
+
+				// TODO (di server): Pastikan Anda memperbarui ht.isSynced = true di database lokal
+				// setelah pemanggilan mutasi ini berhasil, agar tidak dikirim berulang kali.
+			}
+		}
 	};
 
 	return (
@@ -185,8 +248,19 @@ function DashboardHomePage() {
 					>
 						<Download className="w-4 h-4 mr-2" /> Rekap Excel
 					</Button>
-					<Button onClick={handleSync}>
-						<CloudUpload className="w-4 h-4 mr-2" /> Sinkronisasi
+					<Button
+						onClick={handleSync}
+						disabled={syncToSpeedzoneMutation.isPending || isLoading}
+						className="bg-blue-600 hover:bg-blue-700"
+					>
+						{syncToSpeedzoneMutation.isPending ? (
+							<RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+						) : (
+							<CloudUpload className="w-4 h-4 mr-2" />
+						)}
+						{syncToSpeedzoneMutation.isPending
+							? "Menyinkronkan..."
+							: "Sinkronisasi Cloud"}
 					</Button>
 				</div>
 			</div>
@@ -272,9 +346,7 @@ function DashboardHomePage() {
 														variant="outline"
 														size="sm"
 														className="h-7 text-xs bg-white dark:bg-slate-950"
-														// Eksekusi mutasi saat diklik, kirimkan ID heat-nya
 														onClick={() => printMutation.mutate(ht.id)}
-														// Nonaktifkan tombol saat sedang proses mencetak
 														disabled={printMutation.isPending}
 													>
 														<Printer className="w-3 h-3 mr-2" />
@@ -318,9 +390,6 @@ function DashboardHomePage() {
 															</TableCell>
 														</TableRow>
 													) : (
-														// LOGIKA PERINGKAT:
-														// Kita urutkan berdasarkan waktu (finalTimeMillis).
-														// Yang statusnya bukan "OK" (misal DSQ/DNS) atau waktunya null, ditaruh di bawah.
 														[...ht.lanes]
 															.sort((a, b) => {
 																if (a.status !== "OK" && b.status === "OK")
@@ -332,7 +401,6 @@ function DashboardHomePage() {
 																return a.finalTimeMillis - b.finalTimeMillis;
 															})
 															.map((lane, index) => {
-																// Tentukan peringkat: Jika statusnya OK dan ada waktu, kasih nomor urut
 																const isFinishedOk =
 																	lane.status === "OK" && lane.finalTimeMillis;
 																const rank = isFinishedOk ? index + 1 : "-";
