@@ -138,7 +138,15 @@ export const printHeatResult = createServerFn({ method: "POST" })
 							// Baris 1: Peringkat, Lane, dan Waktu (total 32 karakter)
 							const posStr = `#${rank}`.padEnd(4, " "); // misal: "#1  "
 							const lnStr = `[${lane.laneNumber}]`.padEnd(4, " "); // misal: "[4] "
-							const timeVal = lane.finalTime || lane.status || "-";
+
+							// INTERSEPSI STATUS: Jika finalTime kosong dan status masih OK, ubah jadi DNS
+							let timeVal = "-";
+							if (lane.finalTime) {
+								timeVal = lane.finalTime;
+							} else {
+								timeVal = lane.status === "OK" ? "DNS" : lane.status || "-";
+							}
+
 							const timePadded = timeVal.padStart(24, " "); // Waktu rata kanan
 
 							printer

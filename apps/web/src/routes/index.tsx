@@ -90,7 +90,7 @@ function DashboardHomePage() {
 		// Hanya tampilkan event yang memiliki heat setelah difilter
 		.filter((ev) => ev.heats.length > 0);
 
-	// Fungsi Ekspor Excel (Dibiarkan aslinya)
+	// Fungsi Ekspor Excel
 	const handleExportExcel = async () => {
 		toast.info("Menyiapkan dokumen Excel...");
 		try {
@@ -98,6 +98,7 @@ function DashboardHomePage() {
 			const workbook = new ExcelJS.Workbook();
 			const sheet = workbook.addWorksheet("Hasil & Riwayat");
 
+			// Format Lebar Kolom (7 Kolom)
 			sheet.columns = [
 				{ width: 8 }, // A: Ln.
 				{ width: 35 }, // B: Nama
@@ -138,10 +139,19 @@ function DashboardHomePage() {
 						fgColor: { argb: "FFF2F2F2" },
 					};
 
-					ht.lanes.forEach((lane) => {
+					// Urutkan berdasarkan lintasan (opsional, tapi rapi untuk laporan)
+					const sortedLanes = [...ht.lanes].sort(
+						(a, b) => a.laneNumber - b.laneNumber,
+					);
+
+					sortedLanes.forEach((lane) => {
+						// LOGIKA INTERSEPSI DNS
 						let hasilAkhir = lane.finalTime || "-";
+
 						if (lane.status && lane.status !== "OK") {
-							hasilAkhir = lane.status;
+							hasilAkhir = lane.status; // Cetak DSQ/DNF
+						} else if (!lane.finalTime) {
+							hasilAkhir = "DNS"; // Jika OK tapi waktu kosong, paksa jadi DNS
 						}
 
 						sheet.addRow([
@@ -155,7 +165,7 @@ function DashboardHomePage() {
 						]);
 					});
 
-					sheet.addRow([]);
+					sheet.addRow([]); // Baris kosong pemisah antar seri
 				});
 			});
 
