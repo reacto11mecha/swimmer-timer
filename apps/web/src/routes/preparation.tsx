@@ -182,7 +182,7 @@ function PreparationPage() {
 
 				const formattedEvent = {
 					server_event_id: event.id,
-					eventName: event.name,
+					eventName: `Acara ${event.number}`,
 					ageGroup: mappedAgeGroup,
 					distanceStyle: event.name,
 					gender: mappedGender,
