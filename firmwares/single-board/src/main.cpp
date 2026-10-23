@@ -43,7 +43,7 @@ void IRAM_ATTR lane_isr(void *arg) {
   uint32_t lapTime = millis();
   uint8_t lane = (uint32_t)arg;
 
-  static uint32_t last_lap_time[8] = {0};
+  static uint32_t last_lap_time[10] = {0};
 
   if (lapTime - last_lap_time[lane - 1] > DEBOUNCE_LANE_MS) {
     if (digitalRead(PIN_LANES[lane - 1]) == LOW) {
@@ -129,7 +129,7 @@ void setup() {
   pinMode(PIN_STARTER, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(PIN_STARTER), starter_isr, FALLING);
 
-  for (int i = 0; i < 8; i++) {
+  for (int i = 0; i < 10; i++) {
     pinMode(PIN_LANES[i], INPUT_PULLUP);
     attachInterruptArg(digitalPinToInterrupt(PIN_LANES[i]), lane_isr, (void *)(uint32_t)(i + 1), FALLING);
   }
