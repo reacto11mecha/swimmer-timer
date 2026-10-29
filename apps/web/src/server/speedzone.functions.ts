@@ -1,7 +1,7 @@
 // apps/web/src/server/speedzone.functions.ts
 import { db } from "@/db";
-import { heats } from "@swimmer-timer/db/schema";
-import { inArray } from "drizzle-orm";
+import { heats, laneAssignments } from "@swimmer-timer/db/schema";
+import { inArray, eq } from "drizzle-orm";
 import { createServerFn } from "@tanstack/react-start";
 import { fetchSpeedzone } from "./speedzone.api";
 
@@ -69,4 +69,46 @@ export const submitHeatResultsToSpeedzone = createServerFn({ method: "POST" })
 		}
 
 		return result;
+	});
+
+// 5. Tarik Ulang & Perbarui Data Lintasan dari Speedzone
+export const refreshHeatLanesFromSpeedzone = createServerFn({ method: "POST" })
+	.validator((payload: { eventId: number }) => payload)
+	.handler(async (ctx) => {
+		const { eventId } = ctx.data;
+
+		// 1. Ambil data starting-list terbaru dari Speedzone
+		const result = await fetchSpeedzone(`/api/external/events/${eventId}/starting-list`);
+		const startListData = result.data;
+
+		if (!startListData || !startListData.heats) {
+			throw new Error("Jadwal (starting list) tidak ditemukan di peladen Speedzone.");
+		}
+
+		let updatedCount = 0;
+
+		// 2. Iterasi data dan perbarui baris lane di database lokal
+		for (const heat of startListData.heats) {
+			for (const lane of heat.lanes) {
+				if (!lane.participant) continue;
+
+				// Update data atlet berdasarkan ID dari server (serverParticipantId)
+				await db.update(laneAssignments)
+					.set({
+						athleteName: lane.participant.name,
+						clubName: lane.participant.club || "-",
+						birthYear: lane.participant.birth_year?.toString() || "-",
+						seedTime: lane.participant.best_record || "NT",
+						laneNumber: lane.lane, // Antisipasi jika ada perpindahan lintasan
+					})
+					.where(eq(laneAssignments.serverParticipantId, lane.id));
+
+				updatedCount++;
+			}
+		}
+
+		return {
+			success: true,
+			message: `Berhasil menyinkronkan ulang ${updatedCount} data lintasan.`
+		};
 	});

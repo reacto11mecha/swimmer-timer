@@ -4,11 +4,26 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import mqtt from "mqtt";
 
 import { getLiveDashboard } from "@/server/timer.functions";
-import { activateNextHeat } from "@/server/heat.functions";
+import {
+	activateNextHeat,
+	getPendingHeats,
+	activateHeat,
+} from "@/server/heat.functions";
 import { printHeatResult } from "@/server/print.functions";
 import { triggerStopHardware } from "@/server/mqtt.functions";
 import { resetCurrentHeat } from "@/server/heat.functions";
+import {
+	submitHeatResultsToSpeedzone,
+	refreshHeatLanesFromSpeedzone,
+} from "@/server/speedzone.functions"; // Tambahkan fungsi Speedzone
 
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import {
 	Card,
 	CardContent,
@@ -34,6 +49,9 @@ import {
 	AlertTriangle,
 	ArrowRight,
 	Printer,
+	CloudUpload,
+	Search,
+	RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -356,6 +374,93 @@ export default function TimerDashboard() {
 		}
 	};
 
+	// --- 1. Query untuk mengambil daftar Heat yang masih PENDING ---
+	const { data: pendingHeats } = useQuery({
+		queryKey: ["pendingHeats"],
+		queryFn: () => getPendingHeats(),
+	});
+
+	// --- 2. Mutasi untuk melompat ke seri tertentu ---
+	const jumpToHeatMutation = useMutation({
+		mutationFn: (heatId: number) =>
+			activateHeat({ data: { heatDbId: heatId } }),
+		onSuccess: (res) => {
+			setRaceState("READY");
+			setLocalStartTime(null);
+			setDisplayTime(0);
+			setLaneData({});
+			setActivityLogs([]);
+			addLog(`Berhasil melompat ke seri.`, "success");
+			queryClient.invalidateQueries({ queryKey: ["liveTimer"] });
+			queryClient.invalidateQueries({ queryKey: ["pendingHeats"] });
+			toast.success("Berhasil pindah seri!");
+		},
+		onError: (err: any) => toast.error(err.message),
+	});
+
+	// --- 3. Mutasi untuk menarik data lane terbaru dari Speedzone ---
+	const refreshLanesMutation = useMutation({
+		mutationFn: (eventId: number) =>
+			refreshHeatLanesFromSpeedzone({ data: { eventId } }),
+		onSuccess: () => {
+			addLog("Data lintasan berhasil diperbarui dari peladen pusat.", "info");
+			queryClient.invalidateQueries({ queryKey: ["liveTimer"] });
+			toast.success("Data peserta diperbarui!");
+		},
+		onError: (err: any) =>
+			toast.error(`Gagal memperbarui data: ${err.message}`),
+	});
+
+	// --- 4. Mutasi untuk sinkronisasi hasil ke Speedzone ---
+	const syncToSpeedzoneMutation = useMutation({
+		mutationFn: (payload: any) =>
+			submitHeatResultsToSpeedzone({ data: payload }),
+		onSuccess: () => {
+			addLog("Hasil perlombaan berhasil disinkronkan ke Cloud!", "success");
+			toast.success("Catatan waktu berhasil disinkronkan!");
+		},
+		onError: (err: any) => {
+			addLog(`Gagal sinkronisasi: ${err.message}`, "destructive");
+			toast.error(`Gagal sinkronisasi: ${err.message}`);
+		},
+	});
+
+	const handleCloudSync = () => {
+		if (!dashboard?.event?.serverEventId || !dashboard?.heat) {
+			toast.error("Data event server tidak ditemukan!");
+			return;
+		}
+
+		const lanesPayload = dashboard.lanes
+			.filter((lane) => lane.serverParticipantId)
+			.map((lane) => {
+				const hwLaps = laneData[lane.laneNumber] || [];
+				const isFinished = hwLaps.length >= dashboard.heat!.maxLaps;
+
+				let finalStatus = (lane.status || "OK").toUpperCase();
+				if (finalStatus === "OK" && !isFinished) {
+					finalStatus = "DNS";
+				}
+
+				const finalTimeStr = isFinished
+					? formatTime(hwLaps[hwLaps.length - 1])
+					: null;
+
+				return {
+					heat_lane_id: lane.serverParticipantId,
+					result_time: finalTimeStr,
+					result_status: finalStatus.toLowerCase() as "ok" | "dq" | "dns",
+				};
+			});
+
+		toast.info("Mengemas data untuk sinkronisasi...");
+		syncToSpeedzoneMutation.mutate({
+			serverEventId: dashboard.event.serverEventId,
+			heatIds: [dashboard.heat.id],
+			lanes: lanesPayload,
+		});
+	};
+
 	const formatTime = (ms: number) => {
 		if (ms < 0) ms = 0;
 		const m = Math.floor(ms / 60000)
@@ -393,8 +498,8 @@ export default function TimerDashboard() {
 			<Card
 				className={`border-t-4 shadow-sm transition-colors duration-300 ${raceState === "RUNNING" ? "border-t-green-500" : raceState === "STOPPED" || raceState === "FINISHED" ? "border-t-yellow-500" : "border-t-blue-600"}`}
 			>
-				<CardHeader className="flex flex-row items-center justify-between pb-4">
-					<div>
+				<CardHeader className="flex flex-col md:flex-row md:items-start justify-between pb-4 gap-4">
+					<div className="flex-1">
 						<div className="flex items-center gap-2 mb-2">
 							<Badge
 								variant={raceState === "RUNNING" ? "default" : "secondary"}
@@ -412,14 +517,88 @@ export default function TimerDashboard() {
 							Heat {heat.label} • Target: {heat.maxLaps} Lap
 						</p>
 					</div>
-					<div className="text-right">
-						<p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">
-							Waktu Resmi
-						</p>
-						<div
-							className={`text-6xl font-mono font-bold tabular-nums tracking-tighter ${raceState === "RUNNING" ? "text-green-600 dark:text-green-400" : ""}`}
-						>
-							{formatTime(displayTime)}
+
+					<div className="text-right flex flex-col items-end gap-3 min-w-[280px]">
+						<div>
+							<p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">
+								Waktu Resmi
+							</p>
+							<div
+								className={`text-6xl font-mono font-bold tabular-nums tracking-tighter ${raceState === "RUNNING" ? "text-green-600 dark:text-green-400" : ""}`}
+							>
+								{formatTime(displayTime)}
+							</div>
+						</div>
+
+						<div className="flex flex-col w-full gap-2 mt-2">
+							{/* Menu Lompat Seri */}
+							{raceState !== "RUNNING" &&
+								pendingHeats &&
+								pendingHeats.length > 0 && (
+									<div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900 rounded-md p-1 border">
+										<Search className="w-4 h-4 text-muted-foreground ml-2" />
+										<Select
+											onValueChange={(val) =>
+												jumpToHeatMutation.mutate(Number(val))
+											}
+											disabled={
+												jumpToHeatMutation.isPending || raceState === "RUNNING"
+											}
+										>
+											<SelectTrigger className="w-full h-8 text-sm border-0 bg-transparent focus:ring-0 shadow-none">
+												<SelectValue placeholder="Lompat ke Seri..." />
+											</SelectTrigger>
+											<SelectContent>
+												{pendingHeats.map((ph: any) => (
+													<SelectItem key={ph.id} value={ph.id.toString()}>
+														Heat {ph.label} ({ph.event?.eventName})
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+									</div>
+								)}
+
+							{/* Refresh Data Lintasan */}
+							<Button
+								variant="outline"
+								size="sm"
+								className="h-8 text-xs w-full justify-start text-blue-600 hover:text-blue-700"
+								disabled={
+									refreshLanesMutation.isPending ||
+									raceState === "RUNNING" ||
+									!dashboard?.event?.serverEventId
+								}
+								onClick={() =>
+									dashboard?.event?.serverEventId &&
+									refreshLanesMutation.mutate(dashboard.event.serverEventId)
+								}
+							>
+								<RefreshCw
+									className={`w-3 h-3 mr-2 ${refreshLanesMutation.isPending ? "animate-spin" : ""}`}
+								/>
+								{refreshLanesMutation.isPending
+									? "Menarik data..."
+									: "Tarik Data Lintasan Baru"}
+							</Button>
+
+							{/* Sinkronisasi Cloud */}
+							{(raceState === "FINISHED" || raceState === "STOPPED") && (
+								<Button
+									variant="default"
+									size="sm"
+									className="h-8 text-xs w-full justify-start bg-blue-600 hover:bg-blue-700 text-white"
+									onClick={handleCloudSync}
+									disabled={syncToSpeedzoneMutation.isPending}
+								>
+									<CloudUpload
+										className={`w-3 h-3 mr-2 ${syncToSpeedzoneMutation.isPending ? "animate-bounce" : ""}`}
+									/>
+									{syncToSpeedzoneMutation.isPending
+										? "Mengunggah..."
+										: "Simpan Hasil ke Cloud"}
+								</Button>
+							)}
 						</div>
 					</div>
 				</CardHeader>
