@@ -2,7 +2,7 @@
 #include <Wire.h>
 #include <U8g2lib.h>
 #include <RTClib.h>
-#include <JQ6500_Serial.h>
+#include <DFRobotDFPlayerMini.h>
 #include "config.h"
 
 // Ambil variabel state dari main.cpp
@@ -13,9 +13,9 @@ extern volatile uint32_t startTimeMs;
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/U8X8_PIN_NONE);
 RTC_DS3231 rtc;
 
-// Objek untuk JQ6500 menggunakan UART2
+// Objek untuk DFPlayer menggunakan UART2
 HardwareSerial mySerial(2);
-JQ6500_Serial mp3(mySerial);
+DFRobotDFPlayerMini myDFPlayer;
 
 // Variabel statis pengaman (karena ADS1115 dihapus)
 uint8_t currentBatteryPct = 100;
@@ -42,16 +42,20 @@ void hardware_init() {
         }
     }
 
-    // Mulai JQ6500
-    mySerial.begin(9600, SERIAL_8N1, JQ6500_RX, JQ6500_TX);
-    mp3.reset();
-    delay(1000);
-    mp3.setVolume(30);
+    // Mulai DFPlayer
+    mySerial.begin(9600, SERIAL_8N1, DFPLAYER_RX, DFPLAYER_TX);
+    Serial.println("Memulai inisialisasi DFPlayer...");
+    if (!myDFPlayer.begin(mySerial)) {
+        Serial.println("Gagal menemukan DFPlayer!");
+    } else {
+        Serial.println("DFPlayer siap!");
+        myDFPlayer.volume(30); // Volume Maksimal
+    }
 }
 
 // Fungsi global untuk dipanggil saat tombol starter ditekan
 void hardware_play_sound(uint8_t track_num) {
-    mp3.playFileByIndexNumber(track_num);
+    myDFPlayer.play(track_num);
 }
 
 void hardware_loop() {

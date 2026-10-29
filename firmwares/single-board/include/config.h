@@ -11,9 +11,9 @@ const uint8_t PIN_LANES[10] = {13, 14, 27, 26, 25, 33, 32, 18, 19, 23};
 const uint8_t I2C_SDA = 21;
 const uint8_t I2C_SCL = 22;
 
-// UART2 untuk JQ6500
-const uint8_t JQ6500_RX = 16;
-const uint8_t JQ6500_TX = 17;
+// UART2 untuk DFPlayer
+const uint8_t DFPLAYER_RX = 16;
+const uint8_t DFPLAYER_TX = 17;
 
 // --- MQTT TOPICS ---
 #define TOPIC_CMD_SETUP "swimtimer/cmd/setup"
