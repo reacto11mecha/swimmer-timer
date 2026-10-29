@@ -5,6 +5,7 @@
 
 extern volatile RaceState currentState;
 extern volatile uint32_t startTimeMs;
+extern bool isMaintenanceMode;
 
 const char *WIFI_SSID = "hitoriejaya";
 const char *WIFI_PASS = "rularulayabalalala";
@@ -33,6 +34,14 @@ void mqtt_callback(char *topic, byte *payload, unsigned int length) {
             currentState = STATE_STOPPED;
         } else if (cmd == "RESET") {
             currentState = STATE_READY;
+            startTimeMs = 0;
+        } else if (cmd == "MAINTENANCE_ON") {
+            isMaintenanceMode = true;
+            currentState = STATE_READY; // Reset timer saat masuk mode test
+            startTimeMs = 0;
+        } else if (cmd == "MAINTENANCE_OFF") {
+            isMaintenanceMode = false;
+            currentState = STATE_READY; // Reset timer saat keluar mode test
             startTimeMs = 0;
         }
     }

@@ -10,6 +10,7 @@ extern void mqtt_init();
 extern void mqtt_maintain_connection();
 extern PubSubClient mqttClient;
 extern uint8_t currentBatteryPct;
+bool isMaintenanceMode = false;
 
 extern void hardware_init();
 extern void hardware_loop();
@@ -78,32 +79,46 @@ void TaskNetwork(void *pvParameters) {
         doc["elapsed_ms"] = receivedEvent.elapsed_ms;
         String payload;
         serializeJson(doc, payload);
-        mqttClient.publish(TOPIC_EVT_LAP, payload.c_str());
+
+        // UBAH LOGIKA PUBLISH INI:
+        if (isMaintenanceMode) {
+          mqttClient.publish("swimtimer/test/lap", payload.c_str());
+        } else {
+          mqttClient.publish(TOPIC_EVT_LAP, payload.c_str());
+        }
       }
 
       // 2. Cek Starter
       if (flagStartTriggered) {
         flagStartTriggered = false;
-
-        // --- MAINKAN SUARA START (Trek 0001.mp3) ---
         hardware_play_sound(1);
 
         JsonDocument doc;
         doc["status"] = "STARTED";
         String payload;
         serializeJson(doc, payload);
-        mqttClient.publish(TOPIC_EVT_START, payload.c_str());
+
+        // UBAH LOGIKA PUBLISH INI:
+        if (isMaintenanceMode) {
+          mqttClient.publish("swimtimer/test/start", payload.c_str());
+        } else {
+          mqttClient.publish(TOPIC_EVT_START, payload.c_str());
+        }
       }
 
-      // 3. Kirim Telemetri
+      // 3. Kirim Telemetri (Tambahkan status maintenance)
       uint32_t now = millis();
       if (now - lastTelemetryTime > 5000) {
         lastTelemetryTime = now;
         JsonDocument doc;
-        doc["batt_pct"] = currentBatteryPct; // Selalu 100 karena diset statis
+        doc["batt_pct"] = currentBatteryPct;
         doc["rssi"] = WiFi.RSSI();
         doc["current_state"] = (currentState == STATE_READY) ? "READY" :
                                (currentState == STATE_RUNNING) ? "RUNNING" : "STOPPED";
+
+        // TAMBAHKAN BARIS INI:
+        doc["is_maintenance"] = isMaintenanceMode;
+
         String payload;
         serializeJson(doc, payload);
         mqttClient.publish(TOPIC_TELEMETRY, payload.c_str());

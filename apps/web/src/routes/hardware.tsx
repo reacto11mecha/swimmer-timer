@@ -9,6 +9,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +29,8 @@ import {
 	SignalHigh,
 	SignalMedium,
 	SignalLow,
+	Activity,
+	Play,
 } from "lucide-react";
 
 export const Route = createFileRoute("/hardware")({
@@ -47,9 +50,11 @@ function HardwareTelemetryPage() {
 		uptime: "0s",
 		lastPing: "-",
 		rssi: -100,
+		isMaintenance: false,
 	});
 
 	const [logs, setLogs] = useState<MqttLog[]>([]);
+	const [testLogs, setTestLogs] = useState<MqttLog[]>([]);
 	const [isRefreshing, setIsRefreshing] = useState(false);
 	const clientRef = useRef<mqtt.MqttClient | null>(null);
 
@@ -67,6 +72,7 @@ function HardwareTelemetryPage() {
 			client.subscribe("swimtimer/telemetry");
 			client.subscribe("swimtimer/evt/#");
 			client.subscribe("swimtimer/cmd/#");
+			client.subscribe("swimtimer/test/#");
 		});
 
 		client.on("message", (topic, message) => {
@@ -81,6 +87,7 @@ function HardwareTelemetryPage() {
 						...prev,
 						uptime: data.uptime ?? prev.uptime,
 						rssi: data.rssi ?? prev.rssi,
+						isMaintenance: data.is_maintenance ?? prev.isMaintenance, // <-- Update status maintenance
 					}));
 				}
 				// 2. Parsing Balasan PING dari ESP32
@@ -89,6 +96,20 @@ function HardwareTelemetryPage() {
 						const latency = Date.now() - data.timestamp;
 						setTelemetry((prev) => ({ ...prev, lastPing: `${latency}ms` }));
 					}
+				}
+				// <-- TANGKAP LOG PENGUJIAN FISIK DI SINI:
+				else if (topic.startsWith("swimtimer/test/")) {
+					setTestLogs((prev) =>
+						[
+							{
+								id: Date.now(),
+								time: new Date().toLocaleTimeString("id-ID", { hour12: false }),
+								topic,
+								payload: payloadString,
+							},
+							...prev,
+						].slice(0, 10),
+					); // Simpan 10 log test terakhir
 				}
 			} catch (error) {
 				console.error("Gagal parse MQTT JSON:", error);
@@ -155,6 +176,18 @@ function HardwareTelemetryPage() {
 			JSON.stringify({ timestamp: Date.now() }),
 		);
 		setTimeout(() => setIsRefreshing(false), 500);
+	};
+
+	const toggleMaintenanceMode = (checked: boolean) => {
+		if (!clientRef.current || !telemetry.isConnected) return;
+
+		const command = checked ? "MAINTENANCE_ON" : "MAINTENANCE_OFF";
+		clientRef.current.publish(
+			"swimtimer/cmd/control",
+			JSON.stringify({ command }),
+		);
+
+		if (!checked) setTestLogs([]); // Bersihkan log jika dimatikan
 	};
 
 	return (
@@ -246,6 +279,74 @@ function HardwareTelemetryPage() {
 					</CardContent>
 				</Card>
 			</div>
+
+			<Card
+				className={`border-2 transition-colors ${telemetry.isMaintenance ? "border-amber-500 bg-amber-50/10 dark:bg-amber-950/10" : ""}`}
+			>
+				<CardHeader className="flex flex-row items-center justify-between pb-2">
+					<div className="space-y-1 w-[80%]">
+						<CardTitle className="text-xl flex items-center gap-2">
+							<Activity className="h-5 w-5" /> Mode Pengetesan Fisik
+							(Maintenance)
+						</CardTitle>
+						<CardDescription>
+							Aktifkan mode ini untuk menekan tombol Pistol / Lintasan pada alat
+							secara langsung. Data akan dicegat dan ditampilkan di sini tanpa
+							merusak acara yang berjalan di layar Utama.
+						</CardDescription>
+					</div>
+					<div className="flex items-center space-x-2">
+						<span
+							className={`text-sm font-medium ${telemetry.isMaintenance ? "text-amber-600 font-bold" : "text-muted-foreground"}`}
+						>
+							{telemetry.isMaintenance ? "AKTIF" : "NONAKTIF"}
+						</span>
+						<Switch
+							checked={telemetry.isMaintenance}
+							onCheckedChange={toggleMaintenanceMode}
+							disabled={!telemetry.isConnected}
+						/>
+					</div>
+				</CardHeader>
+
+				{telemetry.isMaintenance && (
+					<CardContent className="pt-4 border-t border-amber-200 dark:border-amber-900/50 mt-2">
+						<div className="bg-white dark:bg-black rounded-lg border p-4 min-h-[150px]">
+							<h4 className="text-sm font-bold text-amber-700 dark:text-amber-400 mb-3 flex items-center gap-2">
+								<Play className="w-4 h-4" /> Hasil Tangkapan Sensor Fisik
+							</h4>
+							{testLogs.length === 0 ? (
+								<p className="text-sm text-muted-foreground italic">
+									Menunggu Anda menekan tombol di perangkat...
+								</p>
+							) : (
+								<div className="space-y-2">
+									{testLogs.map((log) => (
+										<div
+											key={log.id}
+											className="flex gap-4 items-center text-sm p-2 bg-amber-50 dark:bg-amber-900/20 rounded"
+										>
+											<span className="font-mono text-muted-foreground whitespace-nowrap">
+												{log.time}
+											</span>
+											<Badge
+												variant={
+													log.topic.includes("start") ? "default" : "secondary"
+												}
+											>
+												{log.topic.split("/").pop()?.toUpperCase()}
+											</Badge>
+											<span className="font-mono text-amber-800 dark:text-amber-200">
+												{log.payload}
+											</span>
+										</div>
+									))}
+								</div>
+							)}
+						</div>
+					</CardContent>
+				)}
+			</Card>
 
 			<Card>
 				<CardHeader>
