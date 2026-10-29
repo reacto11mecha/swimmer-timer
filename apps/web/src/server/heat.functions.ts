@@ -1,9 +1,14 @@
 // apps/web/src/server/heat.functions.ts
 import { createServerFn } from "@tanstack/react-start";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { events, heats } from "@swimmer-timer/db/schema";
+import {
+	events,
+	heats,
+	laneAssignments,
+	lapTimes,
+} from "@swimmer-timer/db/schema";
 import { publishStopAndResetHardware } from "./mqtt.functions";
 
 export const activateNextHeat = createServerFn({ method: "POST" }).handler(
@@ -170,4 +175,62 @@ export const updateHeatMaxLaps = createServerFn({ method: "POST" })
 			.set({ maxLaps: data.maxLaps })
 			.where(eq(heats.id, data.heatId));
 		return { success: true, message: "Jumlah lap berhasil diperbarui." };
+	});
+
+export const resetCurrentHeat = createServerFn({ method: "POST" })
+	.validator(
+		z.object({
+			heatId: z.number(),
+		}),
+	)
+	.handler(async ({ data: { heatId } }) => {
+		try {
+			// 1. Ambil semua laneId yang ada di heat ini
+			const existingLanes = await db
+				.select({ id: laneAssignments.id })
+				.from(laneAssignments)
+				.where(eq(laneAssignments.heatId, heatId));
+
+			const laneIds = existingLanes.map((l) => l.id);
+
+			// 2. Hapus seluruh riwayat putaran (laps) pada lane yang bersangkutan
+			if (laneIds.length > 0) {
+				for (const lId of laneIds) {
+					await db.delete(lapTimes).where(eq(lapTimes.id, lId));
+				}
+			}
+
+			// 3. Reset nilai waktu final di tabel lanes menjadi kosong
+			if (laneIds.length > 0) {
+				for (const lId of laneIds) {
+					await db
+						.update(laneAssignments)
+						.set({
+							finalTime: null,
+							finalTimeMillis: null,
+							status: "OK", // Kembalikan ke OK
+						})
+						.where(eq(laneAssignments.id, lId));
+				}
+			}
+
+			// 4. Ubah kembali status heat ke PENDING & hapus started_at
+			await db
+				.update(heats)
+				.set({
+					status: "PENDING",
+					startedAt: null,
+				})
+				.where(eq(heats.id, heatId));
+
+			// 5. Kirim Sinyal Reset ke Hardware
+			await publishStopAndResetHardware();
+
+			return {
+				success: true,
+				message: "Heat dan Hardware berhasil di-reset sepenuhnya.",
+			};
+		} catch (error: any) {
+			throw new Error(`Gagal mereset heat: ${error.message}`);
+		}
 	});

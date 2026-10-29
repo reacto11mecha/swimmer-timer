@@ -1,15 +1,13 @@
 // apps/web/src/components/main-timer.tsx
 import { useState, useEffect, useRef } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import mqtt from "mqtt";
 
 import { getLiveDashboard } from "@/server/timer.functions";
 import { activateNextHeat } from "@/server/heat.functions";
 import { printHeatResult } from "@/server/print.functions";
-import {
-	triggerResetHardware,
-	triggerStopHardware,
-} from "@/server/mqtt.functions";
+import { triggerStopHardware } from "@/server/mqtt.functions";
+import { resetCurrentHeat } from "@/server/heat.functions";
 
 import {
 	Card,
@@ -61,6 +59,8 @@ export default function TimerDashboard() {
 	const [initializedHeatId, setInitializedHeatId] = useState<number | null>(
 		null,
 	);
+
+	const queryClient = useQueryClient(); // Pastikan Anda mengimpor useQueryClient dari @tanstack/react-query di awal file
 
 	const { data: dashboard, isLoading } = useQuery({
 		queryKey: ["liveTimer"],
@@ -283,17 +283,21 @@ export default function TimerDashboard() {
 
 	// 4. MUTASI & LOGIKA UX TOMBOL AKSI
 	const resetMutation = useMutation({
-		mutationFn: () => triggerResetHardware(),
-		onSuccess: () => {
+		mutationFn: (heatId: number) => resetCurrentHeat({ data: { heatId } }),
+		onSuccess: (res) => {
 			setRaceState("READY");
 			setLocalStartTime(null);
 			setDisplayTime(0);
 			setLaneData({});
 			setActivityLogs([]);
-			addLog(
-				"Hardware di-reset. Siap menerima pistol start untuk Heat selanjutnya.",
-				"info",
-			);
+			addLog(res.message, "info");
+
+			// Wajib invalidate agar React Query menarik ulang data bersih dari database
+			queryClient.invalidateQueries({ queryKey: ["liveTimer"] });
+			toast.success("Heat beserta hardware telah direset.");
+		},
+		onError: (err: any) => {
+			toast.error(`Gagal mereset: ${err.message}`);
 		},
 	});
 
@@ -341,12 +345,14 @@ export default function TimerDashboard() {
 	};
 
 	const handleResetHardware = () => {
+		if (!dashboard?.heat) return;
+
 		if (
 			window.confirm(
-				"Apakah Anda yakin ingin me-RESET hardware?\nPastikan data pemenang sudah tercatat atau perlombaan sudah dibatalkan.",
+				"⚠️ PERINGATAN: RESET TOTAL ⚠️\n\nApakah Anda yakin ingin mereset KESELURUHAN heat ini?\nSeluruh data putaran dan waktu yang terekam akan dihapus dari server, perlombaan ini akan dikembalikan ke status PENDING, dan hardware akan di-reset ke angka 0.",
 			)
 		) {
-			resetMutation.mutate();
+			resetMutation.mutate(dashboard.heat.id);
 		}
 	};
 
@@ -431,7 +437,7 @@ export default function TimerDashboard() {
 						}
 					>
 						<RotateCcw className="mr-2 h-5 w-5" />
-						{resetMutation.isPending ? "Mereset..." : "Reset Hardware"}
+						{resetMutation.isPending ? "Mereset..." : "Reset Seri"}
 					</Button>
 
 					<Button
