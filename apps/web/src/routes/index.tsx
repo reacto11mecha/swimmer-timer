@@ -6,6 +6,9 @@ import { toast } from "sonner";
 import { getHistoryData } from "@/server/history.functions";
 import { printHeatResult } from "@/server/print.functions";
 import { submitHeatResultsToSpeedzone } from "@/server/speedzone.functions";
+import { Trash2, AlertTriangle } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { wipeAllData } from "@/server/history.functions";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -42,6 +45,25 @@ export const Route = createFileRoute("/")({
 function DashboardHomePage() {
 	const queryClient = useQueryClient();
 	const [filter, setFilter] = useState<"ALL" | "SYNCED" | "UNSYNCED">("ALL");
+
+	const [isWipeModalOpen, setIsWipeModalOpen] = useState(false);
+	const [wipeTextConfirm, setWipeTextConfirm] = useState("");
+	const [wipeCheckbox, setWipeCheckbox] = useState(false);
+
+	const wipeMutation = useMutation({
+		mutationFn: () => wipeAllData(),
+		onSuccess: (res) => {
+			toast.success(res.message || "Seluruh data berhasil dihapus!");
+			setIsWipeModalOpen(false);
+			setWipeTextConfirm("");
+			setWipeCheckbox(false);
+			// Refresh semua data di halaman
+			queryClient.invalidateQueries({ queryKey: ["historyData"] });
+		},
+		onError: (err: any) => {
+			toast.error(`Gagal menghapus data: ${err.message}`);
+		},
+	});
 
 	// Fetch semua histori data
 	const { data: events = [], isLoading } = useQuery({
@@ -485,6 +507,107 @@ function DashboardHomePage() {
 							</CardContent>
 						</Card>
 					))}
+				</div>
+			)}
+
+			{/* --- DANGER ZONE --- */}
+			<div className="pt-20 pb-10">
+				<Card className="border-red-200 bg-red-50/30 dark:border-red-900/50 dark:bg-red-950/20 shadow-none">
+					<CardContent className="flex flex-col md:flex-row items-center justify-between p-6 gap-4">
+						<div>
+							<h3 className="text-lg font-bold text-red-700 dark:text-red-400 flex items-center gap-2">
+								<AlertTriangle className="w-5 h-5" /> Danger Zone
+							</h3>
+							<p className="text-sm text-red-600/80 dark:text-red-400/80 mt-1">
+								Hapus seluruh riwayat pertandingan, heat, dan lane dari database
+								lokal. Tindakan ini <strong>tidak dapat dibatalkan</strong>.
+							</p>
+						</div>
+						<Button
+							variant="destructive"
+							onClick={() => setIsWipeModalOpen(true)}
+							className="whitespace-nowrap"
+						>
+							<Trash2 className="w-4 h-4 mr-2" /> Wipe Database
+						</Button>
+					</CardContent>
+				</Card>
+			</div>
+
+			{/* MODAL KONFIRMASI BERLAPIS (Custom Overlay) */}
+			{isWipeModalOpen && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+					<div className="bg-background rounded-xl shadow-lg w-full max-w-md border overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+						<div className="p-6 space-y-4">
+							<div className="flex items-center gap-3 text-destructive">
+								<AlertTriangle className="w-8 h-8" />
+								<h2 className="text-xl font-bold">Peringatan Kritis!</h2>
+							</div>
+							<p className="text-sm text-muted-foreground">
+								Anda akan menghapus <strong>SEMUA DATA</strong> pertandingan di
+								database lokal. Jika belum disinkronkan, data ini akan hilang
+								selamanya.
+							</p>
+
+							<div className="space-y-4 p-4 bg-red-50 dark:bg-red-950/30 rounded-lg border border-red-100 dark:border-red-900/50">
+								{/* Lapis 1: Checkbox */}
+								<label className="flex items-start gap-3 cursor-pointer">
+									<input
+										type="checkbox"
+										className="mt-1 w-4 h-4 accent-red-600"
+										checked={wipeCheckbox}
+										onChange={(e) => setWipeCheckbox(e.target.checked)}
+									/>
+									<span className="text-sm font-medium text-red-900 dark:text-red-200">
+										Saya sadar bahwa tindakan ini permanen dan tidak bisa
+										dibatalkan.
+									</span>
+								</label>
+
+								{/* Lapis 2: Teks Konfirmasi */}
+								<div className="space-y-2 pt-2 border-t border-red-200 dark:border-red-900/50">
+									<p className="text-sm font-medium text-red-900 dark:text-red-200">
+										Ketik{" "}
+										<span className="font-mono font-bold bg-white dark:bg-black px-1 rounded select-all">
+											HAPUS SEMUA DATA
+										</span>{" "}
+										untuk melanjutkan:
+									</p>
+									<Input
+										value={wipeTextConfirm}
+										onChange={(e) => setWipeTextConfirm(e.target.value)}
+										placeholder="HAPUS SEMUA DATA"
+										className="border-red-300 focus-visible:ring-red-500 font-mono"
+									/>
+								</div>
+							</div>
+						</div>
+
+						<div className="flex items-center justify-end gap-3 p-4 bg-muted/50 border-t">
+							<Button
+								variant="outline"
+								onClick={() => {
+									setIsWipeModalOpen(false);
+									setWipeTextConfirm("");
+									setWipeCheckbox(false);
+								}}
+								disabled={wipeMutation.isPending}
+							>
+								Batal
+							</Button>
+							<Button
+								variant="destructive"
+								disabled={
+									!wipeCheckbox ||
+									wipeTextConfirm !== "HAPUS SEMUA DATA" ||
+									wipeMutation.isPending
+								}
+								onClick={() => wipeMutation.mutate()}
+							>
+								{wipeMutation.isPending ? "Menghapus..." : "Ya, Hapus Permanen"}
+							</Button>
+						</div>
+					</div>
 				</div>
 			)}
 		</div>
