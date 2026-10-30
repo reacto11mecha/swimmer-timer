@@ -1,6 +1,6 @@
 // apps/web/src/server/timer.functions.ts
 import { createServerFn } from "@tanstack/react-start";
-import { and, eq, asc } from "drizzle-orm";
+import { eq, and, asc, or, gt } from "drizzle-orm";
 import { db } from "@/db";
 import {
 	events,
@@ -37,7 +37,7 @@ export const getLiveDashboard = createServerFn({ method: "GET" }).handler(
 			}),
 		);
 
-		// 2. Kueri "Heat Selanjutnya" untuk ditampilkan di tombol
+		// 2. Kueri "Heat Selanjutnya" menggunakan logika linear (melihat ke depan)
 		const nextHeatResult = await db
 			.select({
 				label: heats.label,
@@ -45,7 +45,17 @@ export const getLiveDashboard = createServerFn({ method: "GET" }).handler(
 			})
 			.from(heats)
 			.innerJoin(events, eq(heats.eventId, events.id))
-			.where(and(eq(heats.status, "PENDING"), eq(heats.isCurrent, false)))
+			.where(
+				and(
+					eq(heats.status, "PENDING"),
+					eq(heats.isCurrent, false),
+					// Logika: Cari eventId lebih besar, ATAU eventId sama tapi label lebih besar
+					or(
+						gt(heats.eventId, heat.eventId),
+						and(eq(heats.eventId, heat.eventId), gt(heats.label, heat.label)),
+					),
+				),
+			)
 			.orderBy(asc(heats.eventId), asc(heats.label))
 			.limit(1);
 
