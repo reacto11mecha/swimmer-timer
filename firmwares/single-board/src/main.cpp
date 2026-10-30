@@ -23,42 +23,84 @@ volatile uint32_t startTimeMs = 0;
 const uint32_t DEBOUNCE_STARTER_MS = 1000;
 const uint32_t DEBOUNCE_LANE_MS = 3000;
 
-// Fungsi ISR untuk Starter (Pin 23)
-void IRAM_ATTR starter_isr() {
-  static uint32_t last_starter_time = 0;
-  uint32_t now = millis();
+void TaskInput(void *pvParameters) {
+  uint32_t last_starter_trigger = 0;
+  uint32_t last_lane_trigger[10] = {0};
 
-  if (currentState == STATE_READY && (now - last_starter_time > DEBOUNCE_STARTER_MS)) {
-    if (digitalRead(PIN_STARTER) == LOW) {
-      startTimeMs = now;
-      currentState = STATE_RUNNING;
-      last_starter_time = now;
-      flagStartTriggered = true;
+  bool last_starter_state = HIGH;
+  bool last_lane_state[10] = {HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH};
+  uint32_t last_debug_print = 0;
+
+  for (;;) {
+    uint32_t now = millis();
+    bool state_changed = false;
+
+    // --- BACA SEMUA PIN ---
+    bool current_starter = digitalRead(PIN_STARTER);
+    bool current_lanes[10];
+    for (int i = 0; i < 10; i++) {
+      current_lanes[i] = digitalRead(PIN_LANES[i]);
     }
-  }
-}
 
-// Fungsi ISR untuk Lane 1-8
-void IRAM_ATTR lane_isr(void *arg) {
-  if (currentState != STATE_RUNNING) return;
-  uint32_t lapTime = millis();
-  uint8_t lane = (uint32_t)arg;
+    // --- DEBUG & LOGIKA STARTER ---
+    if (last_starter_state != current_starter) {
+      Serial.printf("[DEBUG] PIN STARTER BERUBAH -> %s\n", current_starter == LOW ? "LOW (DITEKAN)" : "HIGH (DILEPAS)");
+      state_changed = true;
+    }
 
-  static uint32_t last_lap_time[10] = {0};
-
-  if (lapTime - last_lap_time[lane - 1] > DEBOUNCE_LANE_MS) {
-    if (digitalRead(PIN_LANES[lane - 1]) == LOW) {
-      last_lap_time[lane - 1] = lapTime;
-      LapEvent event;
-      event.lane_number = lane;
-      event.elapsed_ms = lapTime - startTimeMs;
-
-      BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-      xQueueSendFromISR(lapQueue, &event, &xHigherPriorityTaskWoken);
-      if (xHigherPriorityTaskWoken) {
-        portYIELD_FROM_ISR();
+    if (last_starter_state == HIGH && current_starter == LOW) {
+      if (currentState == STATE_READY && (now - last_starter_trigger > DEBOUNCE_STARTER_MS || last_starter_trigger == 0)) {
+        startTimeMs = now;
+        currentState = STATE_RUNNING;
+        last_starter_trigger = now;
+        flagStartTriggered = true;
+        Serial.println("[SYSTEM] >>> PERLOMBAAN DIMULAI! (STATE_RUNNING) <<<");
+      } else {
+        Serial.printf("[SYSTEM] Starter ditekan tapi ditolak. Status saat ini: %d\n", currentState);
       }
     }
+    last_starter_state = current_starter;
+
+    // --- DEBUG & LOGIKA LANES ---
+    for (int i = 0; i < 10; i++) {
+      if (last_lane_state[i] != current_lanes[i]) {
+        Serial.printf("[DEBUG] PIN LANE %d (Pin %d) BERUBAH -> %s\n", i + 1, PIN_LANES[i], current_lanes[i] == LOW ? "LOW (DITEKAN)" : "HIGH (DILEPAS)");
+        state_changed = true;
+      }
+
+      if (last_lane_state[i] == HIGH && current_lanes[i] == LOW) {
+        if (currentState == STATE_RUNNING) {
+          if (now - last_lane_trigger[i] > DEBOUNCE_LANE_MS || last_lane_trigger[i] == 0) {
+            last_lane_trigger[i] = now;
+            LapEvent event;
+            event.lane_number = i + 1;
+            event.elapsed_ms = now - startTimeMs;
+            xQueueSend(lapQueue, &event, 0);
+            Serial.printf("[MQTT] >>> LAP LANE %d TERCATAT! Waktu: %d ms <<<\n", i + 1, event.elapsed_ms);
+          } else {
+            Serial.printf("[SYSTEM] Lap Lane %d tertahan sistem debounce!\n", i + 1);
+          }
+        } else {
+          Serial.printf("[SYSTEM] Sinyal Lane %d masuk, TAPI DIAIKAN (Sistem belum RUNNING)\n", i + 1);
+        }
+      }
+      last_lane_state[i] = current_lanes[i];
+    }
+
+    // --- CETAK LAPORAN RUTIN (Tiap 2 Detik) ATAU SAAT ADA PERUBAHAN ---
+    if (now - last_debug_print > 2000 || state_changed) {
+      last_debug_print = now;
+      Serial.print("[MONITOR] STATE: ");
+      Serial.print(currentState == STATE_READY ? "READY" : currentState == STATE_RUNNING ? "RUNNING" : "STOPPED");
+      Serial.print(" | STR: "); Serial.print(current_starter == LOW ? "0" : "1");
+      Serial.print(" | LANES(1-10): ");
+      for(int i = 0; i < 10; i++) {
+        Serial.print(current_lanes[i] == LOW ? "0" : "1");
+      }
+      Serial.println(); // 1 = HIGH (Tidak disentuh), 0 = LOW (Disentuh GND)
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
 }
 
@@ -138,17 +180,15 @@ void TaskHardware(void *pvParameters) {
 
 void setup() {
   Serial.begin(115200);
-
   lapQueue = xQueueCreate(20, sizeof(LapEvent));
 
   pinMode(PIN_STARTER, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(PIN_STARTER), starter_isr, FALLING);
-
   for (int i = 0; i < 10; i++) {
     pinMode(PIN_LANES[i], INPUT_PULLUP);
-    attachInterruptArg(digitalPinToInterrupt(PIN_LANES[i]), lane_isr, (void *)(uint32_t)(i + 1), FALLING);
   }
+  // HAPUS baris attachInterrupt() di sini
 
+  xTaskCreatePinnedToCore(TaskInput, "InputTask", 4096, NULL, 2, NULL, 0);
   xTaskCreatePinnedToCore(TaskNetwork, "NetworkTask", 4096, NULL, 1, NULL, 0);
   xTaskCreatePinnedToCore(TaskHardware, "HardwareTask", 4096, NULL, 1, NULL, 1);
 }
