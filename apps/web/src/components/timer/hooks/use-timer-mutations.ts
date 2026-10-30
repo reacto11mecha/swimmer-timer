@@ -34,7 +34,7 @@ export function useTimerMutations({
 }: Options) {
 	const resetMutation = useMutation({
 		mutationFn: (heatId: number) => resetCurrentHeat({ data: { heatId } }),
-		onSuccess: (res: any) => {
+		onSuccess: (res) => {
 			resetLocalState();
 			addLog(res.message, "info");
 			queryClient.invalidateQueries({ queryKey: ["liveTimer"] });

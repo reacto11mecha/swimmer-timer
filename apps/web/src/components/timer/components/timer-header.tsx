@@ -79,109 +79,111 @@ export function TimerHeader({
 						: "border-t-blue-600"
 			}`}
 		>
-			<CardHeader className="flex flex-col md:flex-row md:items-start justify-between pb-4 gap-4">
-				<div className="flex-1">
-					<div className="flex items-center gap-2 mb-2">
-						<Badge variant={raceState === "RUNNING" ? "default" : "secondary"}>
-							{raceState === "READY" ? "WAITING GUN START" : raceState}
-						</Badge>
-						{raceState === "RUNNING" && (
-							<Activity className="h-4 w-4 text-green-500 animate-pulse" />
-						)}
-					</div>
-					<CardTitle className="text-3xl font-bold tracking-tight">
-						{event?.eventName} - {event?.distanceStyle} ({event?.gender})
-					</CardTitle>
-					<p className="text-muted-foreground font-medium mt-1">
-						Heat {heat.label} • Target: {heat.maxLaps} Lap
-					</p>
-				</div>
-
-				<div className="text-right flex flex-col items-end gap-3 min-w-[280px]">
-					<div>
-						<p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">
-							Waktu Resmi
+			<CardHeader className="flex flex-col pb-4 gap-4">
+				<div className="flex flex-row justify-between md:items-start w-full">
+					<div className="flex-1">
+						<div className="flex items-center gap-2 mb-2">
+							<Badge
+								variant={raceState === "RUNNING" ? "default" : "secondary"}
+							>
+								{raceState === "READY" ? "WAITING GUN START" : raceState}
+							</Badge>
+							{raceState === "RUNNING" && (
+								<Activity className="h-4 w-4 text-green-500 animate-pulse" />
+							)}
+						</div>
+						<CardTitle className="text-3xl font-bold tracking-tight">
+							{event?.eventName} - {event?.distanceStyle} ({event?.gender})
+						</CardTitle>
+						<p className="text-muted-foreground font-medium mt-1">
+							Heat {heat.label} • Target: {heat.maxLaps} Lap
 						</p>
-						<div
-							className={`text-6xl font-mono font-bold tabular-nums tracking-tighter ${
-								raceState === "RUNNING"
-									? "text-green-600 dark:text-green-400"
-									: ""
-							}`}
-						>
-							{formatTime(displayTime)}
+					</div>
+
+					<div className="text-right flex flex-col items-end gap-3 min-w-[280px]">
+						<div>
+							<p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">
+								Waktu Resmi
+							</p>
+							<div
+								className={`text-6xl font-mono font-bold tabular-nums tracking-tighter ${
+									raceState === "RUNNING"
+										? "text-green-600 dark:text-green-400"
+										: ""
+								}`}
+							>
+								{formatTime(displayTime)}
+							</div>
 						</div>
 					</div>
+				</div>
 
-					<div className="flex flex-col w-full gap-2 mt-2">
-						{raceState !== "RUNNING" &&
-							pendingHeats &&
-							pendingHeats.length > 0 && (
-								<div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900 rounded-md p-1 border">
-									<Search className="w-4 h-4 text-muted-foreground ml-2" />
-									<Select
-										key={heat?.id || "jump-select"}
-										onValueChange={(val) =>
-											jumpToHeatMutation.mutate(Number(val))
-										}
-										disabled={jumpToHeatMutation.isPending}
-									>
-										<SelectTrigger className="w-full h-8 text-sm border-0 bg-transparent focus:ring-0 shadow-none">
-											<SelectValue placeholder="Lompat ke Seri..." />
-										</SelectTrigger>
-										<SelectContent>
-											{pendingHeats.map((ph) => (
-												<SelectItem key={ph.id} value={ph.id.toString()}>
-													Heat {ph.label} ({ph.event?.eventName})
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
-								</div>
-							)}
+				<div className="flex flex-row w-full gap-3 items-center">
+					{raceState !== "RUNNING" &&
+						pendingHeats &&
+						pendingHeats.length > 0 && (
+							<div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900 rounded-md p-1 border">
+								<Search className="w-4 h-4 text-muted-foreground ml-2" />
+								<Select
+									key={heat?.id || "jump-select"}
+									onValueChange={(val) =>
+										jumpToHeatMutation.mutate(Number(val))
+									}
+									disabled={jumpToHeatMutation.isPending}
+								>
+									<SelectTrigger className="w-full h-8 text-sm border-0 bg-transparent focus:ring-0 shadow-none">
+										<SelectValue placeholder="Lompat ke Seri..." />
+									</SelectTrigger>
+									<SelectContent>
+										{pendingHeats.map((ph) => (
+											<SelectItem key={ph.id} value={ph.id.toString()}>
+												Heat {ph.label} ({ph.event?.eventName})
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</div>
+						)}
 
+					<Button
+						variant="outline"
+						className="h-12 justify-start text-blue-600 hover:text-blue-700"
+						disabled={
+							refreshLanesMutation.isPending ||
+							raceState === "RUNNING" ||
+							!serverEventId
+						}
+						onClick={() =>
+							serverEventId && refreshLanesMutation.mutate(serverEventId)
+						}
+					>
+						<RefreshCw
+							className={`w-3 h-3 mr-2 ${
+								refreshLanesMutation.isPending ? "animate-spin" : ""
+							}`}
+						/>
+						{refreshLanesMutation.isPending
+							? "Menarik data..."
+							: "Tarik Data Lintasan Baru"}
+					</Button>
+
+					{(raceState === "FINISHED" || raceState === "STOPPED") && (
 						<Button
-							variant="outline"
-							size="sm"
-							className="h-8 text-xs w-full justify-start text-blue-600 hover:text-blue-700"
-							disabled={
-								refreshLanesMutation.isPending ||
-								raceState === "RUNNING" ||
-								!serverEventId
-							}
-							onClick={() =>
-								serverEventId && refreshLanesMutation.mutate(serverEventId)
-							}
+							variant="default"
+							className="h-12 justify-start bg-blue-600 hover:bg-blue-700 text-white"
+							onClick={handleCloudSync}
+							disabled={syncToSpeedzoneMutation.isPending}
 						>
-							<RefreshCw
+							<CloudUpload
 								className={`w-3 h-3 mr-2 ${
-									refreshLanesMutation.isPending ? "animate-spin" : ""
+									syncToSpeedzoneMutation.isPending ? "animate-bounce" : ""
 								}`}
 							/>
-							{refreshLanesMutation.isPending
-								? "Menarik data..."
-								: "Tarik Data Lintasan Baru"}
+							{syncToSpeedzoneMutation.isPending
+								? "Mengunggah..."
+								: "Simpan Hasil ke Cloud"}
 						</Button>
-
-						{(raceState === "FINISHED" || raceState === "STOPPED") && (
-							<Button
-								variant="default"
-								size="sm"
-								className="h-8 text-xs w-full justify-start bg-blue-600 hover:bg-blue-700 text-white"
-								onClick={handleCloudSync}
-								disabled={syncToSpeedzoneMutation.isPending}
-							>
-								<CloudUpload
-									className={`w-3 h-3 mr-2 ${
-										syncToSpeedzoneMutation.isPending ? "animate-bounce" : ""
-									}`}
-								/>
-								{syncToSpeedzoneMutation.isPending
-									? "Mengunggah..."
-									: "Simpan Hasil ke Cloud"}
-							</Button>
-						)}
-					</div>
+					)}
 				</div>
 			</CardHeader>
 
