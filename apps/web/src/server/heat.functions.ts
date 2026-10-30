@@ -1,6 +1,6 @@
 // apps/web/src/server/heat.functions.ts
 import { createServerFn } from "@tanstack/react-start";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or, gt } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
@@ -12,60 +12,78 @@ import {
 import { publishStopAndResetHardware } from "./mqtt.functions";
 
 export const activateNextHeat = createServerFn({ method: "POST" }).handler(
-	async () => {
-		// 1. Cari heat yang sedang aktif di layar
-		const currentHeat = await db.query.heats.findFirst({
-			where: eq(heats.isCurrent, true),
-		});
+	async () =>
+		await db.transaction(async (tx) => {
+			// 1. Cari heat yang sedang aktif di layar
+			const currentHeat = await tx.query.heats.findFirst({
+				where: eq(heats.isCurrent, true),
+			});
 
-		if (currentHeat) {
-			// Jika statusnya RUNNING atau PENDING (belum mulai tapi di-skip), jadikan STOPPED
-			let newStatus = currentHeat.status;
-			if (
-				currentHeat.status === "RUNNING" ||
-				currentHeat.status === "PENDING"
-			) {
-				newStatus = "STOPPED";
+			if (currentHeat) {
+				// VALIDASI: Wajib Force Stop Jika Sedang Berjalan
+				if (currentHeat.status === "RUNNING") {
+					throw new Error(
+						"Heat saat ini masih berjalan (RUNNING). Silakan tekan tombol 'Force Stop' terlebih dahulu sebelum berpindah seri.",
+					);
+				}
+
+				// Cabut status "isCurrent"-nya saja
+				await tx
+					.update(heats)
+					.set({ isCurrent: false })
+					.where(eq(heats.id, currentHeat.id));
 			}
 
-			await db
-				.update(heats)
-				.set({ isCurrent: false, status: newStatus })
-				.where(eq(heats.id, currentHeat.id));
-		}
-
-		// 2. Cari heat PENDING selanjutnya berdasarkan urutan event dan label
-		const nextHeat = await db.query.heats.findFirst({
-			where: and(eq(heats.status, "PENDING"), eq(heats.isCurrent, false)),
-			orderBy: (heats, { asc }) => [asc(heats.eventId), asc(heats.label)],
-		});
-
-		if (!nextHeat) {
-			throw new Error(
-				"Tidak ada seri (heat) selanjutnya yang berstatus PENDING di antrean.",
+			// 2. Cari heat PENDING selanjutnya yang posisinya SETELAH currentHeat
+			let nextHeatCondition = and(
+				eq(heats.status, "PENDING"),
+				eq(heats.isCurrent, false),
 			);
-		}
 
-		// 3. Aktifkan heat yang baru
-		await db
-			.update(heats)
-			.set({ isCurrent: true })
-			.where(eq(heats.id, nextHeat.id));
+			if (currentHeat) {
+				// Logika: Cari event yang ID-nya lebih besar, ATAU event-nya sama tapi urutan seri (label)-nya lebih besar
+				nextHeatCondition = and(
+					eq(heats.status, "PENDING"),
+					eq(heats.isCurrent, false),
+					or(
+						gt(heats.eventId, currentHeat.eventId),
+						and(
+							eq(heats.eventId, currentHeat.eventId),
+							gt(heats.label, currentHeat.label),
+						),
+					),
+				);
+			}
 
-		// 4. Hentikan dan Reset Hardware agar stopwatch kembali ke 00:00.000
-		try {
-			await publishStopAndResetHardware();
-		} catch (err) {
-			console.error("[activateNextHeat] Gagal reset hardware:", err);
-			// Kita tidak melempar error di sini agar UI tetap bisa pindah heat
-			// meskipun hardware sedang offline sebentar.
-		}
+			const nextHeat = await tx.query.heats.findFirst({
+				where: nextHeatCondition,
+				orderBy: (heats, { asc }) => [asc(heats.eventId), asc(heats.label)],
+			});
 
-		return {
-			success: true,
-			message: `Berhasil beralih ke Heat ${nextHeat.label}. Perangkat keras di-reset.`,
-		};
-	},
+			if (!nextHeat) {
+				throw new Error(
+					"Tidak ada seri (heat) selanjutnya yang berstatus PENDING di antrean.",
+				);
+			}
+
+			// 3. Aktifkan heat yang baru
+			await tx
+				.update(heats)
+				.set({ isCurrent: true })
+				.where(eq(heats.id, nextHeat.id));
+
+			// 4. Reset Hardware
+			try {
+				await publishStopAndResetHardware();
+			} catch (err) {
+				console.error("[activateNextHeat] Gagal reset hardware:", err);
+			}
+
+			return {
+				success: true,
+				message: `Berhasil pindah ke seri selanjutnya!`,
+			};
+		}),
 );
 
 export const getRunningHeat = createServerFn({ method: "GET" }).handler(
@@ -118,49 +136,49 @@ export const getPendingHeats = createServerFn({ method: "GET" }).handler(
 
 export const activateHeat = createServerFn({ method: "POST" })
 	.validator(z.object({ heatDbId: z.number().min(1, "ID Heat tidak valid") }))
-	.handler(async ({ data }) => {
-		// 1. Amankan heat yang sedang berjalan (jika ada)
-		const runningHeat = await db.query.heats.findFirst({
-			where: and(eq(heats.isCurrent, true), eq(heats.status, "RUNNING")),
-		});
+	.handler(
+		async ({ data }) =>
+			await db.transaction(async (tx) => {
+				// 1. Amankan heat yang sedang aktif (isCurrent: true)
+				const currentHeat = await tx.query.heats.findFirst({
+					where: eq(heats.isCurrent, true),
+				});
 
-		if (runningHeat) {
-			// Tandai heat lama sebagai STOPPED
-			await db
-				.update(heats)
-				.set({ status: "STOPPED" })
-				.where(eq(heats.id, runningHeat.id));
-			console.log(
-				`[activateHeat] Heat ${runningHeat.label} yang sedang berjalan dihentikan paksa (STOPPED).`,
-			);
-		}
+				if (currentHeat) {
+					// VALIDASI: Wajib Force Stop Jika Sedang Berjalan
+					if (currentHeat.status === "RUNNING") {
+						throw new Error(
+							"Heat saat ini masih berjalan (RUNNING). Silakan hentikan paksa (Force Stop) terlebih dahulu sebelum melompat ke seri lain.",
+						);
+					}
 
-		// 2. Hentikan hardware (STOP) lalu RESET agar siap untuk heat baru
-		try {
-			await publishStopAndResetHardware();
-		} catch (err) {
-			console.error("[activateHeat] Gagal menghentikan/reset hardware:", err);
-			throw new Error("Gagal mengirim sinyal ke perangkat keras.");
-		}
+					// Turunkan status isCurrent dari heat sebelumnya tanpa merusak status aslinya
+					await tx
+						.update(heats)
+						.set({ isCurrent: false })
+						.where(eq(heats.id, currentHeat.id));
+				}
 
-		// 3. Transaksi ganti isCurrent ke heat baru
-		await db.transaction(async (tx) => {
-			await tx
-				.update(heats)
-				.set({ isCurrent: false })
-				.where(eq(heats.isCurrent, true));
+				// 2. Set isCurrent pada heat target
+				await tx
+					.update(heats)
+					.set({ isCurrent: true })
+					.where(eq(heats.id, data.heatDbId));
 
-			await tx
-				.update(heats)
-				.set({ isCurrent: true })
-				.where(eq(heats.id, data.heatDbId));
-		});
+				// 3. Reset Hardware agar stopwatch bersih untuk heat baru
+				try {
+					await publishStopAndResetHardware();
+				} catch (err) {
+					console.error("[activateHeat] Gagal reset hardware:", err);
+					throw new Error("Gagal mengirim sinyal ke perangkat keras.");
+				}
 
-		return {
-			success: true,
-			message: `Heat ${data.heatDbId} berhasil dipersiapkan ke kolam.`,
-		};
-	});
+				return {
+					success: true,
+					message: `Berhasil melompat ke Heat ID ${data.heatDbId}.`,
+				};
+			}),
+	);
 
 export const updateHeatMaxLaps = createServerFn({ method: "POST" })
 	.validator(
@@ -183,54 +201,57 @@ export const resetCurrentHeat = createServerFn({ method: "POST" })
 			heatId: z.number(),
 		}),
 	)
-	.handler(async ({ data: { heatId } }) => {
-		try {
-			// 1. Ambil semua laneId yang ada di heat ini
-			const existingLanes = await db
-				.select({ id: laneAssignments.id })
-				.from(laneAssignments)
-				.where(eq(laneAssignments.heatId, heatId));
+	.handler(
+		async ({ data: { heatId } }) =>
+			await db.transaction(async (tx) => {
+				try {
+					// 1. Ambil semua laneId yang ada di heat ini
+					const existingLanes = await tx
+						.select({ id: laneAssignments.id })
+						.from(laneAssignments)
+						.where(eq(laneAssignments.heatId, heatId));
 
-			const laneIds = existingLanes.map((l) => l.id);
+					const laneIds = existingLanes.map((l) => l.id);
 
-			// 2. Hapus seluruh riwayat putaran (laps) pada lane yang bersangkutan
-			if (laneIds.length > 0) {
-				for (const lId of laneIds) {
-					await db.delete(lapTimes).where(eq(lapTimes.id, lId));
-				}
-			}
+					// 2. Hapus seluruh riwayat putaran (laps) pada lane yang bersangkutan
+					if (laneIds.length > 0) {
+						for (const lId of laneIds) {
+							await tx.delete(lapTimes).where(eq(lapTimes.id, lId));
+						}
+					}
 
-			// 3. Reset nilai waktu final di tabel lanes menjadi kosong
-			if (laneIds.length > 0) {
-				for (const lId of laneIds) {
-					await db
-						.update(laneAssignments)
+					// 3. Reset nilai waktu final di tabel lanes menjadi kosong
+					if (laneIds.length > 0) {
+						for (const lId of laneIds) {
+							await tx
+								.update(laneAssignments)
+								.set({
+									finalTime: null,
+									finalTimeMillis: null,
+									status: "OK", // Kembalikan ke OK
+								})
+								.where(eq(laneAssignments.id, lId));
+						}
+					}
+
+					// 4. Ubah kembali status heat ke PENDING & hapus started_at
+					await tx
+						.update(heats)
 						.set({
-							finalTime: null,
-							finalTimeMillis: null,
-							status: "OK", // Kembalikan ke OK
+							status: "PENDING",
+							startedAt: null,
 						})
-						.where(eq(laneAssignments.id, lId));
+						.where(eq(heats.id, heatId));
+
+					// 5. Kirim Sinyal Reset ke Hardware
+					await publishStopAndResetHardware();
+
+					return {
+						success: true,
+						message: "Heat dan Hardware berhasil di-reset sepenuhnya.",
+					};
+				} catch (error: any) {
+					throw new Error(`Gagal mereset heat: ${error.message}`);
 				}
-			}
-
-			// 4. Ubah kembali status heat ke PENDING & hapus started_at
-			await db
-				.update(heats)
-				.set({
-					status: "PENDING",
-					startedAt: null,
-				})
-				.where(eq(heats.id, heatId));
-
-			// 5. Kirim Sinyal Reset ke Hardware
-			await publishStopAndResetHardware();
-
-			return {
-				success: true,
-				message: "Heat dan Hardware berhasil di-reset sepenuhnya.",
-			};
-		} catch (error: any) {
-			throw new Error(`Gagal mereset heat: ${error.message}`);
-		}
-	});
+			}),
+	);

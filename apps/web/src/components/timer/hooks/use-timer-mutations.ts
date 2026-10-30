@@ -57,9 +57,12 @@ export function useTimerMutations({
 		onSuccess: (res: any) => {
 			resetLocalState();
 			addLog(res.message, "success");
+			queryClient.invalidateQueries({ queryKey: ["liveTimer"] });
+			queryClient.invalidateQueries({ queryKey: ["pendingHeats"] });
+			toast.success(res.message as string);
 		},
 		onError: (err: any) => {
-			alert(err.message);
+			toast.error(err.message);
 		},
 	});
 
