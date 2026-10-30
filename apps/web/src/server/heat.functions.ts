@@ -1,6 +1,6 @@
 // apps/web/src/server/heat.functions.ts
 import { createServerFn } from "@tanstack/react-start";
-import { eq, and, or, gt } from "drizzle-orm";
+import { eq, and, or, gt, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
@@ -213,33 +213,31 @@ export const resetCurrentHeat = createServerFn({ method: "POST" })
 
 					const laneIds = existingLanes.map((l) => l.id);
 
-					// 2. Hapus seluruh riwayat putaran (laps) pada lane yang bersangkutan
+					// 2 & 3. Eksekusi penghapusan dan update secara bulk (massal) jika ada lane
 					if (laneIds.length > 0) {
-						for (const lId of laneIds) {
-							await tx.delete(lapTimes).where(eq(lapTimes.id, lId));
-						}
+						// PERBAIKAN: Gunakan laneAssignmentId dan inArray agar dihapus sekaligus
+						await tx
+							.delete(lapTimes)
+							.where(inArray(lapTimes.laneAssignmentId, laneIds));
+
+						// PERBAIKAN: Update semua lane sekaligus menggunakan inArray
+						await tx
+							.update(laneAssignments)
+							.set({
+								finalTime: null,
+								finalTimeMillis: null,
+								status: "OK", // Kembalikan ke OK
+							})
+							.where(inArray(laneAssignments.id, laneIds));
 					}
 
-					// 3. Reset nilai waktu final di tabel lanes menjadi kosong
-					if (laneIds.length > 0) {
-						for (const lId of laneIds) {
-							await tx
-								.update(laneAssignments)
-								.set({
-									finalTime: null,
-									finalTimeMillis: null,
-									status: "OK", // Kembalikan ke OK
-								})
-								.where(eq(laneAssignments.id, lId));
-						}
-					}
-
-					// 4. Ubah kembali status heat ke PENDING & hapus started_at
+					// 4. Ubah kembali status heat ke PENDING & hapus semua penanda waktu
 					await tx
 						.update(heats)
 						.set({
 							status: "PENDING",
 							startedAt: null,
+							hardwareStartMillis: null, // <-- Tambahan: bersihkan juga ini sesuai schema
 						})
 						.where(eq(heats.id, heatId));
 
