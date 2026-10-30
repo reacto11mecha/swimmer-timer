@@ -120,6 +120,7 @@ export function TimerHeader({
 								<div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900 rounded-md p-1 border">
 									<Search className="w-4 h-4 text-muted-foreground ml-2" />
 									<Select
+										key={heat?.id || "jump-select"}
 										onValueChange={(val) =>
 											jumpToHeatMutation.mutate(Number(val))
 										}
@@ -129,7 +130,7 @@ export function TimerHeader({
 											<SelectValue placeholder="Lompat ke Seri..." />
 										</SelectTrigger>
 										<SelectContent>
-											{pendingHeats.map((ph: any) => (
+											{pendingHeats.map((ph) => (
 												<SelectItem key={ph.id} value={ph.id.toString()}>
 													Heat {ph.label} ({ph.event?.eventName})
 												</SelectItem>
