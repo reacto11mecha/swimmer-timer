@@ -78,11 +78,15 @@ export const refreshHeatLanesFromSpeedzone = createServerFn({ method: "POST" })
 		const { eventId } = ctx.data;
 
 		// 1. Ambil data starting-list terbaru dari Speedzone
-		const result = await fetchSpeedzone(`/api/external/events/${eventId}/starting-list`);
+		const result = await fetchSpeedzone(
+			`/api/external/events/${eventId}/starting-list`,
+		);
 		const startListData = result.data;
 
 		if (!startListData || !startListData.heats) {
-			throw new Error("Jadwal (starting list) tidak ditemukan di peladen Speedzone.");
+			throw new Error(
+				"Jadwal (starting list) tidak ditemukan di peladen Speedzone.",
+			);
 		}
 
 		let updatedCount = 0;
@@ -93,7 +97,8 @@ export const refreshHeatLanesFromSpeedzone = createServerFn({ method: "POST" })
 				if (!lane.participant) continue;
 
 				// Update data atlet berdasarkan ID dari server (serverParticipantId)
-				await db.update(laneAssignments)
+				await db
+					.update(laneAssignments)
 					.set({
 						athleteName: lane.participant.name,
 						clubName: lane.participant.club || "-",
@@ -109,6 +114,6 @@ export const refreshHeatLanesFromSpeedzone = createServerFn({ method: "POST" })
 
 		return {
 			success: true,
-			message: `Berhasil menyinkronkan ulang ${updatedCount} data lintasan.`
+			message: `Berhasil menyinkronkan ulang ${updatedCount} data lintasan.`,
 		};
 	});
