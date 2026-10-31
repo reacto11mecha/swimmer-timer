@@ -144,31 +144,27 @@ export function useTimerMutations({
 		}
 
 		const lanesPayload = dashboard.lanes
-			.filter((lane: any) => lane.serverParticipantId)
-			.map((lane: any) => {
-				const hwLaps = laneData[lane.laneNumber] || [];
-				const isFinished = hwLaps.length >= dashboard.heat!.maxLaps;
+			.filter((lane) => lane.serverParticipantId)
+			.map((lane) => {
+				// Gunakan logika intersepsi DNS yang persis sama dengan halaman Index
+				let currentStatus = (lane.status || "OK").toUpperCase();
 
-				let finalStatus = (lane.status || "OK").toUpperCase();
-				if (finalStatus === "OK" && !isFinished) {
-					finalStatus = "DNS";
+				if (currentStatus === "OK" && !lane.finalTime) {
+					currentStatus = "DNS";
 				}
-
-				const finalTimeStr = isFinished
-					? formatTime(hwLaps[hwLaps.length - 1])
-					: null;
 
 				return {
 					heat_lane_id: lane.serverParticipantId,
-					result_time: finalTimeStr,
-					result_status: finalStatus.toLowerCase() as "ok" | "dq" | "dns",
+					result_time: lane.finalTime || null, // Ambil waktu final dari database, bukan dari state stopwatch
+					result_status: currentStatus.toLowerCase() as "ok" | "dq" | "dns",
 				};
 			});
 
-		toast.info("Mengemas data untuk sinkronisasi...");
+		toast.info("Mengemas data hasil seri ini untuk sinkronisasi...");
+
 		syncToSpeedzoneMutation.mutate({
 			serverEventId: dashboard.event.serverEventId,
-			heatIds: [dashboard.heat.id],
+			heatIds: [dashboard.heat.id], // Hanya ubah isSynced = true pada ID heat ini
 			lanes: lanesPayload,
 		});
 	};

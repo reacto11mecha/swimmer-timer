@@ -167,7 +167,7 @@ export function TimerHeader({
 							: "Tarik Data Lintasan Baru"}
 					</Button>
 
-					{(raceState === "FINISHED" || raceState === "STOPPED") && (
+					{/*{(raceState === "FINISHED" || raceState === "STOPPED") && (
 						<Button
 							variant="default"
 							className="h-12 justify-start bg-blue-600 hover:bg-blue-700 text-white"
@@ -183,7 +183,7 @@ export function TimerHeader({
 								? "Mengunggah..."
 								: "Simpan Hasil ke Cloud"}
 						</Button>
-					)}
+					)}*/}
 				</div>
 			</CardHeader>
 
@@ -240,7 +240,13 @@ export function TimerHeader({
 					disabled={
 						raceState === "RUNNING" || nextHeatMutation.isPending || !nextHeat
 					}
-					onClick={() => nextHeatMutation.mutate()}
+					onClick={() => {
+						if (raceState === "FINISHED" || raceState === "STOPPED") {
+							handleCloudSync();
+						}
+
+						nextHeatMutation.mutate();
+					}}
 				>
 					{nextHeatMutation.isPending ? (
 						"Memuat..."

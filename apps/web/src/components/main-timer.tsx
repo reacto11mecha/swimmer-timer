@@ -136,6 +136,7 @@ export default function TimerDashboard() {
 			if (heatId) {
 				addLog("Mencetak struk hasil otomatis...", "info");
 				mutations.printMutation.mutate(heatId);
+				mutations.handleCloudSync();
 			}
 		},
 	});
