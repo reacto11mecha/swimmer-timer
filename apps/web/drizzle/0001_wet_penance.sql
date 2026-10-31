@@ -1,0 +1,1 @@
+ALTER TABLE "lane_assignments" ADD COLUMN "group_label" varchar;

@@ -207,9 +207,27 @@ function PreparationPage() {
 					for (const lane of heat.lanes) {
 						if (!lane.participant) continue;
 
+						let physicalLane = lane.lane;
+						// Ambil group_label, pastikan huruf besar jika ada
+						const groupLabel = lane.group_label
+							? lane.group_label.toUpperCase()
+							: null;
+
+						if (groupLabel) {
+							// Logika Fun Swim Kolam Anda:
+							// Grup A -> Tombol 1-3, Grup B -> Tombol 4-6, Grup C -> Tombol 7-9
+							let offset = 0;
+							if (groupLabel === "B") offset = 3;
+							else if (groupLabel === "C") offset = 6;
+
+							// Rumus Baru: Lane API + Offset (Contoh: Lane 2 Grup B -> 2 + 3 = Tombol 5 fisik)
+							physicalLane = lane.lane + offset;
+						}
+
 						formattedHeat.lanes.push({
 							server_participant_id: lane.id, // Ini adalah heat_lane_id yang diminta Speedzone
-							laneNumber: lane.lane,
+							laneNumber: physicalLane, // Disimpan sebagai angka 1 s/d 9 untuk ESP32
+							groupLabel,
 							athleteName: lane.participant.name,
 							birthYear: lane.participant.birth_year?.toString() || "-",
 							ageGroup: "-",
@@ -227,6 +245,10 @@ function PreparationPage() {
 					parsedEvents.push(formattedEvent);
 				}
 			}
+
+			console.log(parsedEvents);
+
+			debugger;
 
 			if (parsedEvents.length === 0) {
 				throw new Error(

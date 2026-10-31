@@ -5,6 +5,7 @@ import { Timer } from "lucide-react";
 
 import type { Lane, RaceState } from "../types";
 import { formatTime } from "../utils";
+import { useMemo } from "react";
 
 interface Props {
 	lane: Lane;
@@ -24,6 +25,25 @@ export function LaneCard({
 	const lastLapMs = hwLaps.length > 0 ? hwLaps[hwLaps.length - 1] : 0;
 	const isFinished = hwLaps.length >= maxLaps;
 
+	const displayLane = useMemo(() => {
+		let display = lane.laneNumber.toString();
+
+		if (lane.groupLabel) {
+			let localLaneNum = lane.laneNumber;
+			const group = lane.groupLabel.toUpperCase();
+
+			// Grup B menempati tombol fisik 4-6, jadi kurangi 3
+			if (group === "B") localLaneNum -= 3;
+			// Grup C menempati tombol fisik 7-9, jadi kurangi 6
+			else if (group === "C") localLaneNum -= 6;
+
+			// Hasilnya digabung, misalnya: "1A", "2A", "1B"
+			display = `${localLaneNum}${group}`;
+		}
+
+		return display;
+	}, [lane]);
+
 	return (
 		<Card
 			className={`overflow-hidden shadow-sm border-2 ${
@@ -41,7 +61,7 @@ export function LaneCard({
 							: "bg-slate-700"
 				}`}
 			>
-				<span>LINTASAN {lane.laneNumber}</span>
+				<span>LINTASAN {displayLane}</span>
 				{isFinished && (
 					<Badge
 						variant="secondary"

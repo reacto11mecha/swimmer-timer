@@ -10,6 +10,7 @@ const LaneSchema = z.object({
 	server_participant_id: z.number().optional().nullable(),
 	laneNumber: z.number(),
 	athleteName: z.string(),
+	groupLabel: z.string().nullable(),
 	birthYear: z.string().nullable(),
 	ageGroup: z.string().nullable(),
 	clubName: z.string().nullable(),
@@ -154,6 +155,7 @@ export const insertBukuAcaraData = createServerFn({ method: "POST" })
 									.update(laneAssignments)
 									.set({
 										heatId, // Antisipasi jika admin Speedzone memindah atlet ke seri (heat) yang berbeda
+										groupLabel: lane.groupLabel,
 										laneNumber: lane.laneNumber,
 										athleteName: lane.athleteName,
 										clubName: lane.clubName || "-",
@@ -164,6 +166,7 @@ export const insertBukuAcaraData = createServerFn({ method: "POST" })
 								await tx.insert(laneAssignments).values({
 									heatId,
 									serverParticipantId: lane.server_participant_id,
+									groupLabel: lane.groupLabel,
 									laneNumber: lane.laneNumber,
 									athleteName: lane.athleteName,
 									birthYear: lane.birthYear || "-",
@@ -176,6 +179,7 @@ export const insertBukuAcaraData = createServerFn({ method: "POST" })
 						} else {
 							await tx.insert(laneAssignments).values({
 								heatId,
+								groupLabel: lane.groupLabel,
 								laneNumber: lane.laneNumber,
 								athleteName: lane.athleteName,
 								birthYear: lane.birthYear || "-",

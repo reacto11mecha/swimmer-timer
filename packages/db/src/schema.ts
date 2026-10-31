@@ -51,6 +51,7 @@ export const laneAssignments = pgTable("lane_assignments", {
   serverParticipantId: integer("server_participant_id"),
 
   laneNumber: integer("lane_number").notNull(),
+  groupLabel: varchar("group_label"),
 
   // Data dari Excel
   athleteName: varchar("athlete_name"),

@@ -96,7 +96,23 @@ export const refreshHeatLanesFromSpeedzone = createServerFn({ method: "POST" })
 			for (const lane of heat.lanes) {
 				if (!lane.participant) continue;
 
-				// Update data atlet berdasarkan ID dari server (serverParticipantId)
+				let physicalLane = lane.lane;
+				// Ambil group_label, pastikan huruf besar jika ada
+				const groupLabel = lane.group_label
+					? lane.group_label.toUpperCase()
+					: null;
+
+				if (groupLabel) {
+					// Logika Fun Swim Kolam Anda:
+					// Grup A -> Tombol 1-3, Grup B -> Tombol 4-6, Grup C -> Tombol 7-9
+					let offset = 0;
+					if (groupLabel === "B") offset = 3;
+					else if (groupLabel === "C") offset = 6;
+
+					// Rumus Baru: Lane API + Offset (Contoh: Lane 2 Grup B -> 2 + 3 = Tombol 5 fisik)
+					physicalLane = lane.lane + offset;
+				}
+
 				await db
 					.update(laneAssignments)
 					.set({
@@ -104,7 +120,8 @@ export const refreshHeatLanesFromSpeedzone = createServerFn({ method: "POST" })
 						clubName: lane.participant.club || "-",
 						birthYear: lane.participant.birth_year?.toString() || "-",
 						seedTime: lane.participant.best_record || "NT",
-						laneNumber: lane.lane, // Antisipasi jika ada perpindahan lintasan
+						laneNumber: physicalLane,
+						groupLabel,
 					})
 					.where(eq(laneAssignments.serverParticipantId, lane.id));
 

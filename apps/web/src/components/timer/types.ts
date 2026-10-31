@@ -28,6 +28,7 @@ export interface LaneLap {
 export interface Lane {
 	id: string | number;
 	laneNumber: number;
+	groupLabel?: string | null;
 	athleteName?: string | null;
 	clubName?: string | null;
 	status?: string | null;
