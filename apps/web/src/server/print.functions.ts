@@ -1,3 +1,4 @@
+// apps/web/src/server/print.functions.ts
 import { createServerFn } from "@tanstack/react-start";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -37,19 +38,22 @@ export const printHeatResult = createServerFn({ method: "POST" })
 				return (a.finalTimeMillis ?? 0) - (b.finalTimeMillis ?? 0);
 			});
 
-			// 4. Siapkan format tanggal & waktu
+			// 4. Siapkan format tanggal & waktu (FORCE WIB / ASIA/JAKARTA)
 			const now = new Date();
 			const dateStr = now.toLocaleDateString("id-ID", {
+				timeZone: "Asia/Jakarta", // Paksa ke waktu Jakarta
 				weekday: "short",
 				day: "2-digit",
 				month: "short",
 				year: "numeric",
 			});
 			const timeStr = now.toLocaleTimeString("id-ID", {
+				timeZone: "Asia/Jakarta", // Paksa ke waktu Jakarta
 				hour: "2-digit",
 				minute: "2-digit",
+				hour12: false,
 			});
-			const printDate = `${dateStr} - ${timeStr}`;
+			const printDate = `${dateStr} - ${timeStr} WIB`;
 
 			// 5. Bypass Native Device Adapter
 			let fd: number | null = null;
@@ -135,9 +139,25 @@ export const printHeatResult = createServerFn({ method: "POST" })
 							const isFinishedOk = lane.status === "OK" && lane.finalTimeMillis;
 							const rank = isFinishedOk ? `${index + 1}` : "-";
 
-							// Baris 1: Peringkat, Lane, dan Waktu (total 32 karakter)
-							const posStr = `#${rank}`.padEnd(4, " "); // misal: "#1  "
-							const lnStr = `[${lane.laneNumber}]`.padEnd(4, " "); // misal: "[4] "
+							// TENTUKAN DISPLAY LANE SECARA DINAMIS
+							let displayLane = lane.laneNumber.toString();
+							if (lane.groupLabel) {
+								let localLaneNum = lane.laneNumber;
+								const group = lane.groupLabel.toUpperCase();
+
+								// Sesuaikan kembali posisi fisik (kolom 4-6 jadi 1-3, dst)
+								if (group === "B") localLaneNum -= 3;
+								else if (group === "C") localLaneNum -= 6;
+
+								displayLane = `${localLaneNum}${group}`; // Cth: "1A", "2B"
+							}
+
+							// Kalkulasi lebar karakter (Total maksimal 32 karakter)
+							// posStr = 4 karakter (misal: "#1  ")
+							const posStr = `#${rank}`.padEnd(4, " ");
+
+							// lnStr = 5 karakter (misal: "[1A] ")
+							const lnStr = `[${displayLane}]`.padEnd(5, " ");
 
 							// INTERSEPSI STATUS: Jika finalTime kosong dan status masih OK, ubah jadi DNS
 							let timeVal = "-";
@@ -147,7 +167,8 @@ export const printHeatResult = createServerFn({ method: "POST" })
 								timeVal = lane.status === "OK" ? "DNS" : lane.status || "-";
 							}
 
-							const timePadded = timeVal.padStart(24, " "); // Waktu rata kanan
+							// Sisa lebar karakter = 32 - (4 + 5) = 23 karakter
+							const timePadded = timeVal.padStart(23, " ");
 
 							printer
 								.style("B")
