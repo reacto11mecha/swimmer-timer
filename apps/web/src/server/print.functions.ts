@@ -196,3 +196,103 @@ export const printHeatResult = createServerFn({ method: "POST" })
 			);
 		}
 	});
+
+export const printTest = createServerFn({ method: "POST" }).handler(
+	async () => {
+		let fd: number | null = null;
+		const device: escpos.Adapter & {
+			close: (cb?: (err?: Error | null) => void) => void;
+		} = {
+			open: function (callback?: (err?: Error | null) => void) {
+				try {
+					fd = fs.openSync(PRINTER_PATH, "w");
+					if (callback) callback(null);
+				} catch (err: any) {
+					if (callback) callback(err);
+				}
+				return this;
+			},
+			write: function (data: Buffer, callback?: (err?: Error | null) => void) {
+				try {
+					if (fd !== null) fs.writeSync(fd, data);
+					if (callback) callback(null);
+				} catch (err: any) {
+					if (callback) callback(err);
+				}
+				return this;
+			},
+			close: function (callback?: (err?: Error | null) => void) {
+				try {
+					if (fd !== null) {
+						fs.closeSync(fd);
+						fd = null;
+					}
+					if (callback) callback(null);
+				} catch (err: any) {
+					if (callback) callback(err);
+				}
+			},
+		};
+
+		return new Promise<{ success: boolean; message: string }>(
+			(resolve, reject) => {
+				// Kembalikan ke encoding standar / kosongkan agar menggunakan default ASCII printer
+				const printer = new escpos.Printer(device);
+
+				const now = new Date();
+				const printDate =
+					now.toLocaleDateString("id-ID", {
+						timeZone: "Asia/Jakarta",
+						weekday: "short",
+						day: "2-digit",
+						month: "short",
+						year: "numeric",
+					}) +
+					" - " +
+					now.toLocaleTimeString("id-ID", {
+						timeZone: "Asia/Jakarta",
+						hour: "2-digit",
+						minute: "2-digit",
+						hour12: false,
+					}) +
+					" WIB";
+
+				device.open((error: any) => {
+					if (error) {
+						reject(
+							new Error("Gagal membuka koneksi ke printer untuk test print."),
+						);
+						return;
+					}
+
+					printer
+						.align("CT")
+						.style("B")
+						.text("================================")
+						.text("      TEST PRINT BERHASIL       ")
+						.text("================================")
+						.style("NORMAL")
+						.text("")
+						.text("Koneksi USB (LP0) : OK")
+						.text("Status Printer    : READY")
+						.text("")
+						.text("Sistem siap digunakan untuk")
+						.text("mencetak hasil perlombaan renang")
+						.text("")
+						.text("Periksa kembali gulungan kertas")
+						.text("agar tidak habis ditengah jalan")
+						.text("")
+						.text(printDate)
+						.text("================================")
+						.feed(5)
+						.close();
+
+					resolve({
+						success: true,
+						message: "Kertas test print berhasil dicetak!",
+					});
+				});
+			},
+		);
+	},
+);

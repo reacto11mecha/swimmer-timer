@@ -1,6 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
 import mqtt from "mqtt";
+import { toast } from "sonner";
+import { useMutation } from "@tanstack/react-query";
+import { printTest } from "@/server/print.functions";
 
 import {
 	Card,
@@ -31,6 +34,7 @@ import {
 	SignalLow,
 	Activity,
 	Play,
+	Printer,
 } from "lucide-react";
 
 export const Route = createFileRoute("/hardware")({
@@ -57,6 +61,13 @@ function HardwareTelemetryPage() {
 	const [testLogs, setTestLogs] = useState<MqttLog[]>([]);
 	const [isRefreshing, setIsRefreshing] = useState(false);
 	const clientRef = useRef<mqtt.MqttClient | null>(null);
+
+	// Mutasi untuk Test Print
+	const testPrintMutation = useMutation({
+		mutationFn: () => printTest(),
+		onSuccess: (res) => toast.success(res.message),
+		onError: (err: any) => toast.error(`Gagal mencetak: ${err.message}`),
+	});
 
 	useEffect(() => {
 		const wsUrl = import.meta.env.VITE_MQTT_WS_URL || "ws://localhost:9001";
@@ -201,19 +212,31 @@ function HardwareTelemetryPage() {
 						Terhubung langsung ke ESP32 via MQTT WebSockets.
 					</p>
 				</div>
-				<Button
-					variant="outline"
-					onClick={handleManualPing}
-					disabled={isRefreshing || !telemetry.isConnected}
-				>
-					<RefreshCw
-						className={`mr-2 h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
-					/>
-					Ping Perangkat
-				</Button>
+				<div className="flex gap-2">
+					{/* TOMBOL TEST PRINT */}
+					<Button
+						variant="secondary"
+						onClick={() => testPrintMutation.mutate()}
+						disabled={testPrintMutation.isPending}
+					>
+						<Printer className="mr-2 h-4 w-4" />
+						{testPrintMutation.isPending ? "Mencetak..." : "Test Print"}
+					</Button>
+
+					{/* TOMBOL PING PERANGKAT */}
+					<Button
+						variant="outline"
+						onClick={handleManualPing}
+						disabled={isRefreshing || !telemetry.isConnected}
+					>
+						<RefreshCw
+							className={`mr-2 h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
+						/>
+						Ping Perangkat
+					</Button>
+				</div>
 			</div>
 
-			{/* Grid diubah menjadi 3 kolom karena baterai dihapus */}
 			<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between pb-2">
