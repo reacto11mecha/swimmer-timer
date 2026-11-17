@@ -9,7 +9,6 @@ volatile bool flagStartTriggered = false;
 extern void mqtt_init();
 extern void mqtt_maintain_connection();
 extern PubSubClient mqttClient;
-extern uint8_t currentBatteryPct;
 bool isMaintenanceMode = false;
 
 extern void hardware_init();
@@ -23,46 +22,42 @@ volatile uint32_t startTimeMs = 0;
 const uint32_t DEBOUNCE_STARTER_MS = 1000;
 const uint32_t DEBOUNCE_LANE_MS = 3000;
 
-void TaskInput(void *pvParameters) {
-  uint32_t last_starter_trigger = 0;
-  uint32_t last_lane_trigger[10] = {0};
+// Fungsi ISR untuk Starter (Pin 23)
+void IRAM_ATTR starter_isr() {
+  static uint32_t last_starter_time = 0;
+  uint32_t now = millis();
 
-  bool last_starter_state = HIGH;
-  bool last_lane_state[10] = {HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH};
+  if (currentState == STATE_READY && (now - last_starter_time > DEBOUNCE_STARTER_MS)) {
+    if (digitalRead(PIN_STARTER) == LOW) {
+      startTimeMs = now;
+      currentState = STATE_RUNNING;
+      last_starter_time = now;
+      flagStartTriggered = true;
+    }
+  }
+}
 
-  for (;;) {
-    uint32_t now = millis();
+// Fungsi ISR untuk Lane 1-8
+void IRAM_ATTR lane_isr(void *arg) {
+  if (currentState != STATE_RUNNING) return;
+  uint32_t lapTime = millis();
+  uint8_t lane = (uint32_t)arg;
 
-    // --- LOGIKA STARTER ---
-    bool current_starter = digitalRead(PIN_STARTER);
-    if (last_starter_state == HIGH && current_starter == LOW) {
-      if (currentState == STATE_READY && (now - last_starter_trigger > DEBOUNCE_STARTER_MS || last_starter_trigger == 0)) {
-        startTimeMs = now;
-        currentState = STATE_RUNNING;
-        last_starter_trigger = now;
-        flagStartTriggered = true;
+  static uint32_t last_lap_time[10] = {0};
+
+  if (lapTime - last_lap_time[lane - 1] > DEBOUNCE_LANE_MS) {
+    if (digitalRead(PIN_LANES[lane - 1]) == LOW) {
+      last_lap_time[lane - 1] = lapTime;
+      LapEvent event;
+      event.lane_number = lane;
+      event.elapsed_ms = lapTime - startTimeMs;
+
+      BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+      xQueueSendFromISR(lapQueue, &event, &xHigherPriorityTaskWoken);
+      if (xHigherPriorityTaskWoken) {
+        portYIELD_FROM_ISR();
       }
     }
-    last_starter_state = current_starter;
-
-    // --- LOGIKA LANES ---
-    if (currentState == STATE_RUNNING) {
-      for (int i = 0; i < 10; i++) {
-        bool current_lane = digitalRead(PIN_LANES[i]);
-        if (last_lane_state[i] == HIGH && current_lane == LOW) {
-          if (now - last_lane_trigger[i] > DEBOUNCE_LANE_MS || last_lane_trigger[i] == 0) {
-            last_lane_trigger[i] = now;
-            LapEvent event;
-            event.lane_number = i + 1;
-            event.elapsed_ms = now - startTimeMs;
-            xQueueSend(lapQueue, &event, 0);
-          }
-        }
-        last_lane_state[i] = current_lane;
-      }
-    }
-
-    vTaskDelay(pdMS_TO_TICKS(5)); // Low-Pass filter mekanik
   }
 }
 
@@ -112,10 +107,9 @@ void TaskNetwork(void *pvParameters) {
 
       // 3. Kirim Telemetri (Tambahkan status maintenance)
       uint32_t now = millis();
-      if (now - lastTelemetryTime > 5000) {
+      if (now - lastTelemetryTime > 3000) {
         lastTelemetryTime = now;
         JsonDocument doc;
-        doc["batt_pct"] = currentBatteryPct;
         doc["rssi"] = WiFi.RSSI();
         doc["current_state"] = (currentState == STATE_READY) ? "READY" :
                                (currentState == STATE_RUNNING) ? "RUNNING" : "STOPPED";
@@ -145,12 +139,13 @@ void setup() {
   lapQueue = xQueueCreate(20, sizeof(LapEvent));
 
   pinMode(PIN_STARTER, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(PIN_STARTER), starter_isr, FALLING);
+
   for (int i = 0; i < 10; i++) {
     pinMode(PIN_LANES[i], INPUT_PULLUP);
+    attachInterruptArg(digitalPinToInterrupt(PIN_LANES[i]), lane_isr, (void *)(uint32_t)(i + 1), FALLING);
   }
-  // HAPUS baris attachInterrupt() di sini
 
-  xTaskCreatePinnedToCore(TaskInput, "InputTask", 4096, NULL, 2, NULL, 0);
   xTaskCreatePinnedToCore(TaskNetwork, "NetworkTask", 4096, NULL, 1, NULL, 0);
   xTaskCreatePinnedToCore(TaskHardware, "HardwareTask", 4096, NULL, 1, NULL, 1);
 }
