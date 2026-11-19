@@ -15,11 +15,13 @@ import {
 	AlertTriangle,
 	ArrowRight,
 	Printer,
-	CloudUpload,
 	Search,
 	RefreshCw,
+	Radio,
+	Wrench,
 } from "lucide-react";
 import { useTimerMutations } from "../hooks/use-timer-mutations";
+import { useHardwareTelemetry } from "../hooks/use-hardware-telemetry";
 
 import type { RaceState, Event, Heat, NextHeat, PendingHeats } from "../types";
 import { formatTime } from "../utils";
@@ -46,6 +48,19 @@ interface Props {
 	};
 }
 
+const getWatchdogStyle = (seconds: number | null) => {
+	if (seconds === null) {
+		return "text-muted-foreground bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700";
+	}
+	if (seconds < 4) {
+		return "text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950/50 border-green-300 dark:border-green-800";
+	}
+	if (seconds <= 8) {
+		return "text-orange-700 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/50 border-orange-300 dark:border-orange-800";
+	}
+	return "text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-950/50 border-red-300 dark:border-red-800 animate-pulse";
+};
+
 export function TimerHeader({
 	event,
 	heat,
@@ -64,10 +79,12 @@ export function TimerHeader({
 		printMutation,
 		jumpToHeatMutation,
 		refreshLanesMutation,
-		syncToSpeedzoneMutation,
 	} = mutations;
 
 	const { handleForceStop, handleResetHardware, handleCloudSync } = handlers;
+
+	const { currentState, isMaintenance, secondsSinceLastMsg } =
+		useHardwareTelemetry();
 
 	return (
 		<Card
@@ -100,7 +117,7 @@ export function TimerHeader({
 						</p>
 					</div>
 
-					<div className="text-right flex flex-col items-end gap-3 min-w-[280px]">
+					<div className="text-right flex flex-col items-end gap-2 min-w-[280px]">
 						<div>
 							<p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">
 								Waktu Resmi
@@ -113,6 +130,42 @@ export function TimerHeader({
 								}`}
 							>
 								{formatTime(displayTime)}
+							</div>
+						</div>
+
+						{/* Indikator Telemetri & Watchdog Timer */}
+						<div className="flex items-center justify-end gap-2">
+							{isMaintenance && (
+								<Badge
+									variant="outline"
+									className="border-amber-500 bg-amber-500/15 text-amber-700 dark:text-amber-400 font-semibold gap-1"
+								>
+									<Wrench className="w-3 h-3" />
+									MAINTENANCE
+								</Badge>
+							)}
+
+							<Badge
+								variant="outline"
+								className="font-mono text-xs bg-slate-50 dark:bg-slate-900"
+							>
+								HW: {currentState}
+							</Badge>
+
+							<div
+								className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-xs font-mono font-semibold tabular-nums transition-colors ${getWatchdogStyle(
+									secondsSinceLastMsg,
+								)}`}
+								title="Waktu sejak telemetri terakhir diterima"
+							>
+								<Radio className="w-3 h-3" />
+								<span>
+									{secondsSinceLastMsg !== null
+										? secondsSinceLastMsg > 99.9
+											? ">99s"
+											: `${secondsSinceLastMsg.toFixed(1)}s`
+										: "--.-s"}
+								</span>
 							</div>
 						</div>
 					</div>
@@ -166,24 +219,6 @@ export function TimerHeader({
 							? "Menarik data..."
 							: "Tarik Data Lintasan Baru"}
 					</Button>
-
-					{/*{(raceState === "FINISHED" || raceState === "STOPPED") && (
-						<Button
-							variant="default"
-							className="h-12 justify-start bg-blue-600 hover:bg-blue-700 text-white"
-							onClick={handleCloudSync}
-							disabled={syncToSpeedzoneMutation.isPending}
-						>
-							<CloudUpload
-								className={`w-3 h-3 mr-2 ${
-									syncToSpeedzoneMutation.isPending ? "animate-bounce" : ""
-								}`}
-							/>
-							{syncToSpeedzoneMutation.isPending
-								? "Mengunggah..."
-								: "Simpan Hasil ke Cloud"}
-						</Button>
-					)}*/}
 				</div>
 			</CardHeader>
 

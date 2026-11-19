@@ -70,7 +70,9 @@ function HardwareTelemetryPage() {
 	});
 
 	useEffect(() => {
-		const wsUrl = import.meta.env.VITE_MQTT_WS_URL || "ws://localhost:9001";
+		const wsUrl =
+			import.meta.env.VITE_MQTT_WS_URL ||
+			`ws://${window.location.hostname}:9001`;
 		const client = mqtt.connect(wsUrl, {
 			clientId: `web_dashboard_${Math.random().toString(16).slice(2, 8)}`,
 			keepalive: 30,
