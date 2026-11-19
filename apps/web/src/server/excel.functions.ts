@@ -10,7 +10,7 @@ const LaneSchema = z.object({
 	server_participant_id: z.number().optional().nullable(),
 	laneNumber: z.number(),
 	athleteName: z.string(),
-	groupLabel: z.string().nullable(),
+	groupLabel: z.string().optional().nullable(),
 	birthYear: z.string().nullable(),
 	ageGroup: z.string().nullable(),
 	clubName: z.string().nullable(),
@@ -34,38 +34,52 @@ const EventSchema = z.object({
 });
 
 const ImportPayloadSchema = z.array(EventSchema);
-
 export const insertBukuAcaraData = createServerFn({ method: "POST" })
 	.validator(ImportPayloadSchema)
 	.handler(async ({ data }) => {
-		await db.transaction(async (tx) => {
-			for (const ev of data) {
-				let eventId: number;
+		if (!data || !Array.isArray(data)) {
+			throw new Error("Payload data kosong atau tidak terbaca oleh server.");
+		}
 
-				// ==========================================
-				// 1. UPSERT ACARA (EVENT)
-				// ==========================================
-				if (ev.server_event_id) {
-					const [existingEvent] = await tx
-						.select()
-						.from(events)
-						.where(eq(events.serverEventId, ev.server_event_id));
-					if (existingEvent) {
-						eventId = existingEvent.id;
-						await tx
-							.update(events)
-							.set({
-								eventName: ev.eventName,
-								ageGroup: ev.ageGroup,
-								distanceStyle: ev.distanceStyle,
-								gender: ev.gender,
-							})
-							.where(eq(events.id, eventId));
+		try {
+			await db.transaction(async (tx) => {
+				for (const ev of data) {
+					let eventId: number;
+
+					// 1. UPSERT ACARA (EVENT)
+					if (ev.server_event_id) {
+						const [existingEvent] = await tx
+							.select()
+							.from(events)
+							.where(eq(events.serverEventId, ev.server_event_id));
+						if (existingEvent) {
+							eventId = existingEvent.id;
+							await tx
+								.update(events)
+								.set({
+									eventName: ev.eventName,
+									ageGroup: ev.ageGroup,
+									distanceStyle: ev.distanceStyle,
+									gender: ev.gender,
+								})
+								.where(eq(events.id, eventId));
+						} else {
+							const [newEv] = await tx
+								.insert(events)
+								.values({
+									serverEventId: ev.server_event_id,
+									eventName: ev.eventName,
+									ageGroup: ev.ageGroup,
+									distanceStyle: ev.distanceStyle,
+									gender: ev.gender,
+								})
+								.returning({ id: events.id });
+							eventId = newEv.id;
+						}
 					} else {
 						const [newEv] = await tx
 							.insert(events)
 							.values({
-								serverEventId: ev.server_event_id,
 								eventName: ev.eventName,
 								ageGroup: ev.ageGroup,
 								distanceStyle: ev.distanceStyle,
@@ -74,43 +88,41 @@ export const insertBukuAcaraData = createServerFn({ method: "POST" })
 							.returning({ id: events.id });
 						eventId = newEv.id;
 					}
-				} else {
-					// Fallback untuk Excel manual
-					const [newEv] = await tx
-						.insert(events)
-						.values({
-							eventName: ev.eventName,
-							ageGroup: ev.ageGroup,
-							distanceStyle: ev.distanceStyle,
-							gender: ev.gender,
-						})
-						.returning({ id: events.id });
-					eventId = newEv.id;
-				}
 
-				// ==========================================
-				// 2. UPSERT SERI (HEAT)
-				// ==========================================
-				for (const ht of ev.heats) {
-					let heatId: number;
+					// 2. UPSERT SERI (HEAT)
+					for (const ht of ev.heats) {
+						let heatId: number;
 
-					if (ht.server_heat_id) {
-						const [existingHeat] = await tx
-							.select()
-							.from(heats)
-							.where(eq(heats.serverHeatId, ht.server_heat_id));
-						if (existingHeat) {
-							heatId = existingHeat.id;
-							await tx
-								.update(heats)
-								.set({ label: ht.label, maxLaps: ht.maxLaps })
-								.where(eq(heats.id, heatId));
+						if (ht.server_heat_id) {
+							const [existingHeat] = await tx
+								.select()
+								.from(heats)
+								.where(eq(heats.serverHeatId, ht.server_heat_id));
+							if (existingHeat) {
+								heatId = existingHeat.id;
+								await tx
+									.update(heats)
+									.set({ label: ht.label, maxLaps: ht.maxLaps })
+									.where(eq(heats.id, heatId));
+							} else {
+								const [newHt] = await tx
+									.insert(heats)
+									.values({
+										eventId,
+										serverHeatId: ht.server_heat_id,
+										label: ht.label,
+										status: "PENDING",
+										isCurrent: false,
+										maxLaps: ht.maxLaps,
+									})
+									.returning({ id: heats.id });
+								heatId = newHt.id;
+							}
 						} else {
 							const [newHt] = await tx
 								.insert(heats)
 								.values({
 									eventId,
-									serverHeatId: ht.server_heat_id,
 									label: ht.label,
 									status: "PENDING",
 									isCurrent: false,
@@ -119,54 +131,54 @@ export const insertBukuAcaraData = createServerFn({ method: "POST" })
 								.returning({ id: heats.id });
 							heatId = newHt.id;
 						}
-					} else {
-						const [newHt] = await tx
-							.insert(heats)
-							.values({
-								eventId,
-								label: ht.label,
-								status: "PENDING",
-								isCurrent: false,
-								maxLaps: ht.maxLaps,
-							})
-							.returning({ id: heats.id });
-						heatId = newHt.id;
-					}
 
-					// ==========================================
-					// 3. UPSERT LINTASAN (LANE) - ANTI REWRITE WAKTU
-					// ==========================================
-					for (const lane of ht.lanes) {
-						if (lane.server_participant_id) {
-							const [existingLane] = await tx
-								.select()
-								.from(laneAssignments)
-								.where(
-									eq(
-										laneAssignments.serverParticipantId,
-										lane.server_participant_id,
-									),
-								);
+						// ==========================================
+						// 3. UPSERT LINTASAN (LANE) - ANTI REWRITE WAKTU
+						// ==========================================
+						for (const lane of ht.lanes) {
+							if (lane.server_participant_id) {
+								const [existingLane] = await tx
+									.select()
+									.from(laneAssignments)
+									.where(
+										eq(
+											laneAssignments.serverParticipantId,
+											lane.server_participant_id,
+										),
+									);
 
-							if (existingLane) {
-								// HANYA UPDATE info identitas dan posisi lintasan.
-								// Dilarang keras menimpa status perlombaan, finalTime, dan finalTimeMillis.
-								await tx
-									.update(laneAssignments)
-									.set({
-										heatId, // Antisipasi jika admin Speedzone memindah atlet ke seri (heat) yang berbeda
-										groupLabel: lane.groupLabel,
+								if (existingLane) {
+									// HANYA UPDATE info identitas dan posisi lintasan.
+									// Dilarang keras menimpa status perlombaan, finalTime, dan finalTimeMillis.
+									await tx
+										.update(laneAssignments)
+										.set({
+											heatId,
+											groupLabel: lane.groupLabel ?? null,
+											laneNumber: lane.laneNumber,
+											athleteName: lane.athleteName,
+											clubName: lane.clubName || "-",
+											seedTime: lane.seedTime || "-",
+										})
+										.where(eq(laneAssignments.id, existingLane.id));
+								} else {
+									await tx.insert(laneAssignments).values({
+										heatId,
+										serverParticipantId: lane.server_participant_id,
+										groupLabel: lane.groupLabel ?? null,
 										laneNumber: lane.laneNumber,
 										athleteName: lane.athleteName,
+										birthYear: lane.birthYear || "-",
+										ageGroup: lane.ageGroup || "-",
 										clubName: lane.clubName || "-",
 										seedTime: lane.seedTime || "-",
-									})
-									.where(eq(laneAssignments.id, existingLane.id));
+										status: "OK",
+									});
+								}
 							} else {
 								await tx.insert(laneAssignments).values({
 									heatId,
-									serverParticipantId: lane.server_participant_id,
-									groupLabel: lane.groupLabel,
+									groupLabel: lane.groupLabel ?? null,
 									laneNumber: lane.laneNumber,
 									athleteName: lane.athleteName,
 									birthYear: lane.birthYear || "-",
@@ -176,26 +188,17 @@ export const insertBukuAcaraData = createServerFn({ method: "POST" })
 									status: "OK",
 								});
 							}
-						} else {
-							await tx.insert(laneAssignments).values({
-								heatId,
-								groupLabel: lane.groupLabel,
-								laneNumber: lane.laneNumber,
-								athleteName: lane.athleteName,
-								birthYear: lane.birthYear || "-",
-								ageGroup: lane.ageGroup || "-",
-								clubName: lane.clubName || "-",
-								seedTime: lane.seedTime || "-",
-								status: "OK",
-							});
 						}
 					}
 				}
-			}
-		});
-		return {
-			success: true,
-			message:
-				"Data struktur jadwal (Excel/Speedzone) berhasil diterapkan dengan aman!",
-		};
+			});
+
+			return {
+				success: true,
+				message:
+					"Data struktur jadwal (Excel/Speedzone) berhasil diterapkan dengan aman!",
+			};
+		} catch (err: unknown) {
+			console.log(err);
+		}
 	});

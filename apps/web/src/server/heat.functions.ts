@@ -160,10 +160,11 @@ export const activateHeat = createServerFn({ method: "POST" })
 				}
 
 				// 2. Set isCurrent pada heat target
-				await tx
+				const current = await tx
 					.update(heats)
 					.set({ isCurrent: true })
-					.where(eq(heats.id, data.heatDbId));
+					.where(eq(heats.id, data.heatDbId))
+					.returning();
 
 				// 3. Reset Hardware agar stopwatch bersih untuk heat baru
 				try {
@@ -176,6 +177,7 @@ export const activateHeat = createServerFn({ method: "POST" })
 				return {
 					success: true,
 					message: `Berhasil melompat ke Heat ID ${data.heatDbId}.`,
+					maxLaps: current[0].maxLaps,
 				};
 			}),
 	);

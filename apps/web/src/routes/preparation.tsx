@@ -93,7 +93,7 @@ function PreparationPage() {
 	const uploadMutation = useMutation({
 		mutationFn: (jsonData: any) => insertBukuAcaraData({ data: jsonData }),
 		onSuccess: (res) => {
-			toast.success(res.message);
+			toast.success(res?.message);
 			queryClient.invalidateQueries({ queryKey: ["runningHeat"] });
 			queryClient.invalidateQueries({ queryKey: ["pendingHeats"] });
 			if (fileInputRef.current) fileInputRef.current.value = "";
@@ -107,7 +107,7 @@ function PreparationPage() {
 	const syncSpeedzoneMutation = useMutation({
 		// Kita menggunakan format JSON yang sama seperti Excel agar bisa di-reuse oleh insertBukuAcaraData
 		mutationFn: (jsonData: any) => insertBukuAcaraData({ data: jsonData }),
-		onSuccess: (res) => {
+		onSuccess: () => {
 			toast.success("Sinkronisasi Speedzone berhasil!");
 			queryClient.invalidateQueries({ queryKey: ["runningHeat"] });
 			queryClient.invalidateQueries({ queryKey: ["pendingHeats"] });
@@ -124,6 +124,7 @@ function PreparationPage() {
 			toast.success(res.message);
 			queryClient.invalidateQueries({ queryKey: ["runningHeat"] });
 			queryClient.invalidateQueries({ queryKey: ["pendingHeats"] });
+			setMaxLapsInput(res.maxLaps);
 		},
 		onError: (err: any) => {
 			toast.error(`Error mengaktifkan heat: ${err.message}`);
@@ -529,7 +530,10 @@ function PreparationPage() {
 									Kelompok / Gender
 								</div>
 								<div className="font-semibold">
-									{runningHeat.event.ageGroup} - {runningHeat.event.gender}
+									{runningHeat.event.ageGroup === "-"
+										? ""
+										: `${runningHeat.event.ageGroup} -`}{" "}
+									{runningHeat.event.gender}
 								</div>
 
 								<div className="text-muted-foreground font-medium mt-2">
@@ -614,7 +618,10 @@ function PreparationPage() {
 											</TableCell>
 											<TableCell>{heat.event.distanceStyle}</TableCell>
 											<TableCell>
-												{heat.event.ageGroup} {heat.event.gender}
+												{heat.event.ageGroup === "-"
+													? ""
+													: "heat.event.ageGroup"}{" "}
+												{heat.event.gender}
 											</TableCell>
 											<TableCell>
 												<Badge
