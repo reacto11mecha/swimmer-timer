@@ -618,9 +618,10 @@ function PreparationPage() {
 											</TableCell>
 											<TableCell>{heat.event.distanceStyle}</TableCell>
 											<TableCell>
-												{heat.event.ageGroup === "-"
+												{heat.event.ageGroup === "-" ||
+												heat.event.ageGroup === "Grup -"
 													? ""
-													: "heat.event.ageGroup"}{" "}
+													: `${heat.event.ageGroup} `}
 												{heat.event.gender}
 											</TableCell>
 											<TableCell>
